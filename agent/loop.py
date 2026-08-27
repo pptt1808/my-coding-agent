@@ -37,11 +37,17 @@ def build_system_prompt(workdir: str) -> str:
 class CodingAgent:
     """A single task-solving agent run."""
 
-    def __init__(self, config: Config, llm: LLMClient | None = None) -> None:
+    def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
+                 trace: bool = False) -> None:
         self._config = config
         self._workdir = config.workdir
-        self._llm = llm or LLMClient(config)
+        self._llm = llm or LLMClient(config, model=model)
+        self._trace = trace
         register_builtins()  # idempotent
+
+    def _log(self, msg: str) -> None:
+        if self._trace:
+            print(f"[trace] {msg}", flush=True)
 
     def run(self, task: str) -> str:
         """Run the agent on a task and return its final answer (L1)."""
@@ -61,6 +67,7 @@ class CodingAgent:
         while not terminator.should_stop(state, time.monotonic() - start):
             state.steps += 1
             result = self._llm.complete(system_prompt, history, registry.tool_schemas())
+            self._log(f"step {state.steps}: usage={result.usage}")
 
             native_calls = parse_tool_calls(result)
             fallback_call = parse_tool_call_from_text(result.text) if not native_calls else None
@@ -68,7 +75,13 @@ class CodingAgent:
             # No tool call at all -> this is the final answer.
             if not native_calls and fallback_call is None:
                 history.append({"role": "assistant", "content": result.text})
+                self._log(f"final answer: {result.text[:200]!r}")
                 return result.text
+
+            self._log("tool calls: " + ", ".join(
+                f"{tc.name}({json.dumps(tc.arguments, ensure_ascii=False)[:120]})"
+                for tc in (native_calls or [fallback_call])
+            ))
 
             if native_calls:
                 # OpenAI-compatible protocol: assistant message carries tool_calls,
@@ -105,6 +118,7 @@ class CodingAgent:
     def _dispatch(self, state: LoopState, tc: ToolCall, last_tool: str | None) -> str:
         """Run one tool, updating failure/progress counters (L2/L5)."""
         output = registry.dispatch(tc.name, tc.arguments)
+        self._log(f"  {tc.name} -> {output[:160]!r}")
         if output.startswith("Error:"):
             state.consecutive_failures += 1
         else:

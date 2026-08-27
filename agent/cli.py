@@ -22,7 +22,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     cfg = Config.from_env()
     from .loop import CodingAgent
 
-    answer = CodingAgent(cfg).run(args.task)
+    answer = CodingAgent(cfg, model=args.model).run(args.task)
     print(answer)
     return 0
 
@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("config", help="print resolved configuration").set_defaults(func=_cmd_config)
     run = sub.add_parser("run", help="run the agent on a task")
     run.add_argument("task", help="the coding task to complete")
+    run.add_argument("--model", default=None, help="override the model tier (e.g. deepseek-v4-pro)")
     run.set_defaults(func=_cmd_run)
     args = parser.parse_args(argv)
     return args.func(args)

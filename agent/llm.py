@@ -35,10 +35,15 @@ class LLMClient:
 
     `client` is injectable for tests (a fake OpenAI object); production code
     creates the real `openai.OpenAI(api_key=..., base_url=...)`.
+
+    Model layering: pass `model=` to pick a specific tier (e.g. the eval harness
+    passes `config.eval_model_name` for the strong tier); defaults to the
+    config's interactive/dev `model`.
     """
 
-    def __init__(self, config: Config, client: Any | None = None) -> None:
+    def __init__(self, config: Config, client: Any | None = None, model: str | None = None) -> None:
         self._config = config
+        self._model = model or config.model
         self._client = client or OpenAI(api_key=config.api_key, base_url=config.base_url)
 
     def complete(
@@ -48,7 +53,7 @@ class LLMClient:
         tools: list[dict[str, Any]],
     ) -> LLMResult:
         kwargs: dict[str, Any] = {
-            "model": self._config.model,
+            "model": self._model,
             "messages": [{"role": "system", "content": system_prompt}, *messages],
         }
         if tools:

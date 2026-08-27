@@ -24,6 +24,7 @@ class Config:
     api_key: str
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
+    eval_model: str = ""  # stronger model for the eval harness; falls back to `model`
     workdir: Path = Path(".")
     max_steps: int = 25
     max_tool_calls: int = 50
@@ -32,6 +33,11 @@ class Config:
     max_consecutive_failures: int = 3
     no_progress_limit: int = 3
     max_elapsed_s: float = 600.0
+
+    @property
+    def eval_model_name(self) -> str:
+        """The model used by the evaluation harness (分层: eval uses the strong tier)."""
+        return self.eval_model or self.model
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = None) -> "Config":
@@ -51,6 +57,7 @@ class Config:
             api_key=api_key,
             base_url=os.environ.get("BASE_URL", "https://api.openai.com/v1"),
             model=os.environ.get("MODEL", "gpt-4o-mini"),
+            eval_model=os.environ.get("EVAL_MODEL", ""),
             workdir=Path(os.environ.get("WORKDIR", ".")).resolve(),
             max_steps=int(os.environ.get("MAX_STEPS", "25")),
             max_tool_calls=int(os.environ.get("MAX_TOOL_CALLS", "50")),

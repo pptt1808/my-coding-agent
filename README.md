@@ -28,19 +28,23 @@ cp .env.example .env        # then fill in your API key (never commit .env)
 ## Run
 ```bash
 coding-agent config         # print resolved configuration
-coding-agent run "fix the bug in src/util.py"   # full agent loop
+coding-agent run "fix the bug in src/util.py"          # dev tier (MODEL)
+coding-agent run "..." --model deepseek-v4-pro         # override tier
+python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs .env key)
 ```
 
 ## Tests
 ```bash
-pytest                      # 46 contract tests (specs/tools/loop/parser/...)
+pytest                      # 48 contract tests (specs/tools/loop/parser/...)
 ```
 
 ## Status
-Phase 1 (minimum closed loop) done:
+Phase 1 (minimum closed loop) done + verified against a REAL model:
 - `agent/loop.py` — the full agent pipeline (LLM → parse → execute → feed back → terminate)
 - `agent/llm.py` — OpenAI-compatible gateway client with NATIVE tool calling
+- Model layering: `MODEL` (dev, e.g. deepseek-v4-flash) vs `EVAL_MODEL` (eval, e.g. deepseek-v4-pro), `LLMClient(model=...)` / `run --model` to pick a tier
 - `tools/` — `read_file` / `write_file` / `bash` with workdir confinement + dangerous-command blacklist, text-fallback parsing, multi-threshold termination, context truncation/summarization
-- 46 contract tests green (`pytest`); offline end-to-end demo: `python examples/demo_fake_agent.py`
+- 48 contract tests green (`pytest`); offline demo: `python examples/demo_fake_agent.py`
+- **Live smoke PASS** (real DeepSeek key, both flash & pro): fix-bug task → read → write → verify via pytest → final answer
 
-Next: T1 robustness (edit_file/grep/glob tool set, richer error handling), then the eval harness (Phase 5).
+Next: T1 robustness (edit_file/grep/glob tool set), then the eval harness (Phase 5).

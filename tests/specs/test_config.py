@@ -57,3 +57,21 @@ def test_c4_workdir_is_absolute(monkeypatch):
     monkeypatch.setenv("WORKDIR", ".")
     cfg = Config.from_env()
     assert cfg.workdir.is_absolute()
+
+
+def test_c5_eval_model_falls_back_to_model(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("MODEL", "deepseek-v4-flash")
+    monkeypatch.delenv("EVAL_MODEL", raising=False)
+    cfg = Config.from_env()
+    assert cfg.model == "deepseek-v4-flash"
+    assert cfg.eval_model_name == "deepseek-v4-flash"
+
+
+def test_c6_eval_model_from_env(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("EVAL_MODEL", "deepseek-v4-pro")
+    cfg = Config.from_env()
+    assert cfg.eval_model == "deepseek-v4-pro"
+    assert cfg.eval_model_name == "deepseek-v4-pro"
