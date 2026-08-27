@@ -41,7 +41,7 @@ layer that grades the running agent — see 开发文档 §6.4.
 | `safety.md` | `tools/shell.py`, `tools/file_ops.py` | S1-S4 | 🔲 Phase 4 (T2) |
 | `eval-tasks.md` | `eval/tasks.py` | EV1-EV4 | ✅ Phase 5 已实现 |
 | `eval-harness.md` | `eval/harness.py` | EH1-EH4 | ✅ Phase 5 已实现 |
-| `eval-judge.md` | `eval/judge.py` | EJ1-EJ4 | 🔲 Phase 6 |
+| `eval-judge.md` | `eval/judge.py` | EJ1-EJ4 | ✅ Phase 6 已实现 |
 | `eval-report.md` | `eval/report.py` | ER1-ER4 | ✅ Phase 5 已实现 |
 
 每份 spec 对应的契约测试在 `tests/specs/test_<name>.py`，应在实现**之前**编写（先红后绿）。

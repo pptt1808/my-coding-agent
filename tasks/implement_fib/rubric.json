@@ -1,0 +1,5 @@
+{
+  "correctness": "Does the implementation satisfy the spec for all reasonable inputs?",
+  "quality": "Is the code clear, idiomatic and free of dead code?",
+  "minimal": "Is the change minimal and on-topic (no unrelated edits)?"
+}
