@@ -14,6 +14,11 @@ def register_builtins() -> None:
     register("read_file", schemas.READ_FILE, file_ops.read_file)
     register("write_file", schemas.WRITE_FILE, file_ops.write_file)
     register("bash", schemas.BASH, shell.bash)
+    register("list_dir", schemas.LIST_DIR, file_ops.list_dir)
+    register("glob", schemas.GLOB, file_ops.glob)
+    register("grep", schemas.GREP, file_ops.grep)
+    register("append_file", schemas.APPEND_FILE, file_ops.append_file)
+    register("edit_file", schemas.EDIT_FILE, file_ops.edit_file)
 
 
 __all__ = ["context", "file_ops", "schemas", "shell", "dispatch", "register", "tool_schemas", "register_builtins"]

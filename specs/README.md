@@ -32,7 +32,7 @@ layer that grades the running agent — see 开发文档 §6.4.
 | spec | 对应模块 | 关键验收 | 状态 |
 |---|---|---|---|
 | `config.md` | `agent/config.py` | C1-C4 | ✅ 已实现，契约测试绿 |
-| `tools.md` | `tools/file_ops.py`, `tools/shell.py` | read_file A1-A3, write_file B1-B2, bash C1-C4 | 🔲 Phase 1 实现 |
+| `tools.md` | `tools/file_ops.py`, `tools/shell.py` | read_file A1-A3, write_file B1-B2, bash C1-C4, list_dir L1-L3, glob G1-G3, grep GR1-GR4, append_file AP1-AP2, edit_file ED1-ED5 | ✅ Phase 1+T1 已实现 |
 | `agent-loop.md` | `agent/loop.py` | L1-L5 | 🔲 Phase 1 |
 | `parser.md` | `agent/parser.py` | P1-P4 | 🔲 Phase 1+ |
 | `termination.md` | `agent/termination.py` | T1-T6 | 🔲 Phase 1 (T1-T3) / Phase 3 (T4-T6) |
