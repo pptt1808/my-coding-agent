@@ -1,0 +1,26 @@
+[project]
+name = "coding-agent"
+version = "0.1.0"
+description = "A self-hosted coding agent (Claude Code / Codex style) plus an AI-driven automated evaluation harness."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.40.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+coding-agent = "agent.cli:main"
+
+[tool.setuptools]
+packages = ["agent", "tools", "eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

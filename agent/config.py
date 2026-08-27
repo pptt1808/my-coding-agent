@@ -1,0 +1,56 @@
+"""Configuration loading from environment variables / `.env`.
+
+Phase 0 (N1). Reads API key, gateway base URL, model, workdir and loop limits.
+This is one of the few *fully implemented* files in the scaffold, because the
+config contract is stable and everything else depends on it.
+
+Spec: see specs/config.md (to be written) — acceptance criteria:
+  C1  loads key from API_KEY or OPENAI_API_KEY env;
+  C2  raises a clear error when no key is present;
+  C3  defaults applied when optional vars are absent;
+  C4  workdir resolved to an absolute path.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+@dataclass(frozen=True)
+class Config:
+    api_key: str
+    base_url: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o-mini"
+    workdir: Path = Path(".")
+    max_steps: int = 25
+    max_tool_calls: int = 50
+    command_timeout: int = 60
+    output_cap_chars: int = 8000
+
+    @classmethod
+    def from_env(cls, env_file: str | Path | None = None) -> "Config":
+        """Build a Config from environment (optionally loading a .env file)."""
+        if env_file is None:
+            env_file = Path(os.environ.get("CODING_AGENT_ENV", ".env"))
+        load_dotenv(dotenv_path=env_file)
+
+        api_key = os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "No API key found. Set API_KEY (or OPENAI_API_KEY) or provide a .env "
+                "file — see .env.example. Keys must never be committed."
+            )
+
+        return cls(
+            api_key=api_key,
+            base_url=os.environ.get("BASE_URL", "https://api.openai.com/v1"),
+            model=os.environ.get("MODEL", "gpt-4o-mini"),
+            workdir=Path(os.environ.get("WORKDIR", ".")).resolve(),
+            max_steps=int(os.environ.get("MAX_STEPS", "25")),
+            max_tool_calls=int(os.environ.get("MAX_TOOL_CALLS", "50")),
+            command_timeout=int(os.environ.get("COMMAND_TIMEOUT", "60")),
+            output_cap_chars=int(os.environ.get("OUTPUT_CAP_CHARS", "8000")),
+        )
