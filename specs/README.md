@@ -39,9 +39,9 @@ layer that grades the running agent — see 开发文档 §6.4.
 | `context.md` | `agent/history.py` | CT1-CT5 | 🔲 Phase 1 (CT1-CT4) / Phase 3 (CT5) |
 | `errors.md` | `agent/errors.py`, `tools/registry.py` | E1-E4 | 🔲 Phase 1 |
 | `safety.md` | `tools/shell.py`, `tools/file_ops.py` | S1-S4 | 🔲 Phase 4 (T2) |
-| `eval-tasks.md` | `eval/tasks.py` | EV1-EV4 | 🔲 Phase 5 |
-| `eval-harness.md` | `eval/harness.py` | EH1-EH4 | 🔲 Phase 5 |
+| `eval-tasks.md` | `eval/tasks.py` | EV1-EV4 | ✅ Phase 5 已实现 |
+| `eval-harness.md` | `eval/harness.py` | EH1-EH4 | ✅ Phase 5 已实现 |
 | `eval-judge.md` | `eval/judge.py` | EJ1-EJ4 | 🔲 Phase 6 |
-| `eval-report.md` | `eval/report.py` | ER1-ER4 | 🔲 Phase 5 |
+| `eval-report.md` | `eval/report.py` | ER1-ER4 | ✅ Phase 5 已实现 |
 
 每份 spec 对应的契约测试在 `tests/specs/test_<name>.py`，应在实现**之前**编写（先红后绿）。

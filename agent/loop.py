@@ -43,6 +43,9 @@ class CodingAgent:
         self._workdir = config.workdir
         self._llm = llm or LLMClient(config, model=model)
         self._trace = trace
+        self.total_tokens: int = 0
+        self.steps: int = 0
+        self.trajectory: list[dict[str, Any]] = []
         register_builtins()  # idempotent
 
     def _log(self, msg: str) -> None:
@@ -67,6 +70,14 @@ class CodingAgent:
         while not terminator.should_stop(state, time.monotonic() - start):
             state.steps += 1
             result = self._llm.complete(system_prompt, history, registry.tool_schemas())
+            self.total_tokens += int(result.usage.get("total_tokens", 0))
+            self.trajectory.append({
+                "step": state.steps,
+                "text": result.text[:300],
+                "tool_calls": [{"name": tc.name, "arguments": tc.arguments}
+                               for tc in result.tool_calls],
+                "usage": dict(result.usage),
+            })
             self._log(f"step {state.steps}: usage={result.usage}")
 
             native_calls = parse_tool_calls(result)
@@ -110,6 +121,7 @@ class CodingAgent:
                 history.append({"role": "user", "content": f"[tool:{fallback_call.name}]\n{output}"})
                 last_tool = fallback_call.name
 
+        self.steps = state.steps
         return (
             "Error: agent loop stopped without a final answer "
             f"(steps={state.steps}, tool_calls={state.tool_calls})."

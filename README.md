@@ -35,7 +35,13 @@ python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs
 
 ## Tests
 ```bash
-pytest                      # 65 contract tests (specs/tools/loop/parser/...)
+pytest                      # 79 contract tests (specs/tools/loop/eval/...)
+```
+
+## Automated evaluation
+```bash
+python -m eval tasks                     # batch eval, eval tier (EVAL_MODEL)
+python -m eval tasks --model deepseek-v4-flash   # compare tiers
 ```
 
 ## Status
@@ -44,7 +50,8 @@ Phase 1 (minimum closed loop) done + verified against a REAL model:
 - `agent/llm.py` — OpenAI-compatible gateway client with NATIVE tool calling
 - Model layering: `MODEL` (dev, e.g. deepseek-v4-flash) vs `EVAL_MODEL` (eval, e.g. deepseek-v4-pro), `LLMClient(model=...)` / `run --model` to pick a tier
 - `tools/` — `read_file` / `write_file` / `edit_file` / `append_file` / `bash` / `list_dir` / `glob` / `grep` (T1 set) with workdir confinement + dangerous-command blacklist, text-fallback parsing, multi-threshold termination, context truncation/summarization
-- 65 contract tests green (`pytest`); offline demo: `python examples/demo_fake_agent.py`
+- 79 contract tests green (`pytest`); offline demo: `python examples/demo_fake_agent.py`
 - **Live smoke PASS** (real DeepSeek key, both flash & pro): fix-bug task → read → **edit_file** → verify via pytest → final answer
+- **Eval harness (Phase 5)**: `tasks/` task set (repo seed + hidden tests) → isolated temp-dir runs → hidden-test PASS/FAIL grading → markdown report. Real run: **2/2 PASS on both tiers** (pro avg 11.6s/8.5k tokens, flash avg 5.7s/6.6k tokens)
 
-Next: eval harness (Phase 5) — task set + isolated runner + PASS/FAIL grading.
+Next: LLM-judge rubric scoring (Phase 6), then product polish + video (Phase 7).
