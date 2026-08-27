@@ -1,0 +1,4 @@
+# Normalize line endings across platforms for this repo.
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
