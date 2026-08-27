@@ -28,14 +28,19 @@ cp .env.example .env        # then fill in your API key (never commit .env)
 ## Run
 ```bash
 coding-agent config         # print resolved configuration
-coding-agent run "fix the bug in src/util.py"   # Phase 1 wires this up
+coding-agent run "fix the bug in src/util.py"   # full agent loop
 ```
 
 ## Tests
 ```bash
-pytest
+pytest                      # 46 contract tests (specs/tools/loop/parser/...)
 ```
 
 ## Status
-Phase 0 scaffold. `config.py` is implemented (with green contract tests); the
-loop / tools / eval are stubs awaiting their spec-driven Phase 1+ implementation.
+Phase 1 (minimum closed loop) done:
+- `agent/loop.py` — the full agent pipeline (LLM → parse → execute → feed back → terminate)
+- `agent/llm.py` — OpenAI-compatible gateway client with NATIVE tool calling
+- `tools/` — `read_file` / `write_file` / `bash` with workdir confinement + dangerous-command blacklist, text-fallback parsing, multi-threshold termination, context truncation/summarization
+- 46 contract tests green (`pytest`); offline end-to-end demo: `python examples/demo_fake_agent.py`
+
+Next: T1 robustness (edit_file/grep/glob tool set, richer error handling), then the eval harness (Phase 5).

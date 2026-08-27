@@ -19,8 +19,12 @@ def _cmd_config(_args: argparse.Namespace) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
-    # TODO(Phase 1): instantiate CodingAgent and run the task.
-    raise NotImplementedError("`run` is implemented in Phase 1 (specs/agent-loop.md).")
+    cfg = Config.from_env()
+    from .loop import CodingAgent
+
+    answer = CodingAgent(cfg).run(args.task)
+    print(answer)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

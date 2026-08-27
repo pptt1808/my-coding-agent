@@ -29,6 +29,9 @@ class Config:
     max_tool_calls: int = 50
     command_timeout: int = 60
     output_cap_chars: int = 8000
+    max_consecutive_failures: int = 3
+    no_progress_limit: int = 3
+    max_elapsed_s: float = 600.0
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = None) -> "Config":
@@ -53,4 +56,7 @@ class Config:
             max_tool_calls=int(os.environ.get("MAX_TOOL_CALLS", "50")),
             command_timeout=int(os.environ.get("COMMAND_TIMEOUT", "60")),
             output_cap_chars=int(os.environ.get("OUTPUT_CAP_CHARS", "8000")),
+            max_consecutive_failures=int(os.environ.get("MAX_CONSECUTIVE_FAILURES", "3")),
+            no_progress_limit=int(os.environ.get("NO_PROGRESS_LIMIT", "3")),
+            max_elapsed_s=float(os.environ.get("MAX_ELAPSED_S", "600")),
         )

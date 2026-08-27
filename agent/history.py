@@ -1,9 +1,8 @@
-"""Context / conversation history management (N7).
+"""Context / conversation history management (N7, specs/context.md CT1-CT5).
 
-Phase 1 keeps a full transcript; Phase 3 (T1) adds token counting, history
-summarization and selective context assembly on top.
-
-Spec: specs/context.md (to be written). Placeholder for now.
+Full transcript is carried by default (B7); large outputs are truncated, and
+`summarize_oldest` compresses the oldest messages when the token budget is
+exceeded. Token counts are cheap deterministic estimates (chars // 4).
 """
 from __future__ import annotations
 
@@ -21,13 +20,34 @@ class History:
         self._messages.append(message)
 
     def as_list(self) -> list[dict[str, Any]]:
+        """CT4: return a copy, not the internal mutable list."""
         return list(self._messages)
 
     def truncate_large_output(self, text: str, cap: int = 8000) -> str:
-        """Replace very long tool outputs (files / command stdout) with a capped head + marker."""
+        """CT2/CT3: cap long text with a truncation marker; short text unchanged."""
         if len(text) <= cap:
             return text
         return text[:cap] + f"\n... [truncated {len(text) - cap} chars]"
 
+    @staticmethod
+    def _estimate_tokens(content: str) -> int:
+        return max(1, len(content) // 4)
+
+    def _total_tokens(self) -> int:
+        return sum(self._estimate_tokens(str(m.get("content", ""))) for m in self._messages)
+
     def summarize_oldest(self) -> None:
-        raise NotImplementedError("History summarization lands in Phase 3 (specs/context.md).")
+        """CT5: compress oldest messages until the total token estimate fits.
+
+        Deterministic heuristic summary (head + marker); an LLM-based summarizer
+        can replace this later without changing the contract.
+        """
+        while self._total_tokens() > self._max_tokens and self._messages:
+            oldest = self._messages.pop(0)
+            content = str(oldest.get("content", ""))
+            head = content[:50]
+            summary = head + (" ... [summarized]" if len(content) > 50 else "")
+            if len(summary) >= len(content):
+                # Already as small as the summary would be; drop it instead.
+                continue
+            self._messages.insert(0, {"role": oldest.get("role", "user"), "content": summary})
