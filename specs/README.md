@@ -28,12 +28,20 @@ Each spec file maps to a `tests/specs/test_*.py` that encodes its acceptance
 criteria as pytest tests. The eval harness (`eval/`) is the *second*, higher
 layer that grades the running agent — see 开发文档 §6.4.
 
-## Starter specs to write (matching the scaffold)
-- `config.md`        -> config contract (C1-C4) [config.py is already implemented]
-- `tools.md`         -> read_file A1/A2/A3, write_file, bash (Phase 1)
-- `agent-loop.md`    -> the pipeline (Phase 1)
-- `parser.md`        -> native + text-fallback parsing (Phase 1+)
-- `termination.md`   -> combined thresholds (Phase 3/T1)
-- `context.md`       -> history + truncation/summarization (Phase 3/T1)
-- `errors.md`        -> error funneling (N6)
-- `eval-*.md`        -> task / harness / judge / report (Phase 5-6)
+## Specs authored so far (all match the scaffold module names)
+| spec | 对应模块 | 关键验收 | 状态 |
+|---|---|---|---|
+| `config.md` | `agent/config.py` | C1-C4 | ✅ 已实现，契约测试绿 |
+| `tools.md` | `tools/file_ops.py`, `tools/shell.py` | read_file A1-A3, write_file B1-B2, bash C1-C4 | 🔲 Phase 1 实现 |
+| `agent-loop.md` | `agent/loop.py` | L1-L5 | 🔲 Phase 1 |
+| `parser.md` | `agent/parser.py` | P1-P4 | 🔲 Phase 1+ |
+| `termination.md` | `agent/termination.py` | T1-T6 | 🔲 Phase 1 (T1-T3) / Phase 3 (T4-T6) |
+| `context.md` | `agent/history.py` | CT1-CT5 | 🔲 Phase 1 (CT1-CT4) / Phase 3 (CT5) |
+| `errors.md` | `agent/errors.py`, `tools/registry.py` | E1-E4 | 🔲 Phase 1 |
+| `safety.md` | `tools/shell.py`, `tools/file_ops.py` | S1-S4 | 🔲 Phase 4 (T2) |
+| `eval-tasks.md` | `eval/tasks.py` | EV1-EV4 | 🔲 Phase 5 |
+| `eval-harness.md` | `eval/harness.py` | EH1-EH4 | 🔲 Phase 5 |
+| `eval-judge.md` | `eval/judge.py` | EJ1-EJ4 | 🔲 Phase 6 |
+| `eval-report.md` | `eval/report.py` | ER1-ER4 | 🔲 Phase 5 |
+
+每份 spec 对应的契约测试在 `tests/specs/test_<name>.py`，应在实现**之前**编写（先红后绿）。
