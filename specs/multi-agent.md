@@ -20,3 +20,17 @@
 - E5 探索 agent 只读：write_file/edit_file/bash 工具被拦截（回填"not enabled"），不修改文件；
 - E6 简报有界（≤ `explore_brief_chars`）；
 - E7 主力 agent 收到的是 brief 块（`PROJECT BRIEF ...`），而非原始文件 dump。
+
+### Phase B（planner + 并行 fan-out，均默认关）
+- `parse_todos(text) -> list[str]`：把 planner 的数字/符号输出解析为 todo 列表（≤10，去编号）；
+- `plan_block(todos)`：`PLAN (from the planner subagent ...)` 块；
+- `run_planner(config, task, brief, llm=None, trace=False) -> list[str]`：cheap planner（无工具纯推理），brief+task → todo；
+- `parallel_explore(config, task, modules=None, llms=None, trace=False) -> str`：每个顶层模块一个只读 explore agent（`workdir=<repo>/<module>`），线程并发，合并为有界 brief；
+- `orchestrate`：`PARALLEL_EXPLORE=auto/always` 且顶层模块数 ≥ `explore_fanout_min_modules` → fan-out；`AUTO_PLAN=auto/always` → 注入 `plan_block`；二者都默认 off。
+
+验收标准（追加）：
+- P1 `parse_todos` 去编号/符号，≤10 条；
+- P2 `run_planner`（假 LLM 返回编号列表）→ todo；`plan_block` 含 `PLAN` 头；
+- P3 `orchestrate` 开 `auto_plan` 时，implement 的 system prompt 同时含 `PROJECT BRIEF` 与 `PLAN` 块；
+- F1 `parallel_explore` 为每个顶层模块产出一个带 `[模块名]` 标签的 brief，合并后有界；
+- F2 `orchestrate` 开 `parallel_explore=auto` 且模块数达标时走 fan-out（多模块标签）；不达标时仍走单 explore。

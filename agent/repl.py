@@ -39,13 +39,14 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /task clear      clear the todo list
   /review          diff changes since session start, run tests, judge the diff
   /explore         run a cheap read-only subagent and add a project brief to context
+  /plan            explore + plan a todo list with cheap subagents
   /permissions     show workdir + blacklist
   /permissions block <pattern>   add a session blacklist pattern
   /permissions reset            restore the default blacklist
 Anything else is sent to the agent as a new turn."""
 
 COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
-            "save", "resume", "ls", "task", "review", "explore", "permissions"]
+            "save", "resume", "ls", "task", "review", "explore", "plan", "permissions"]
 
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
@@ -241,6 +242,8 @@ class ReplSession:
             return self._review()
         if cmd == "/explore":
             return self._explore()
+        if cmd == "/plan":
+            return self._plan()
         if cmd == "/permissions":
             return self._permissions(arg)
         return [f"unknown command: {cmd}. Available: {', '.join('/' + c for c in COMMANDS)}"]
@@ -257,6 +260,19 @@ class ReplSession:
             return [f"[explore] project brief ({len(brief)} chars) added to context:", brief[:1200]]
         except Exception as exc:
             return [f"[explore] failed: {exc}"]
+
+    def _plan(self) -> list[str]:
+        """Explore the repo with a cheap subagent, then plan a todo list (/plan)."""
+        from .multi import run_explore, run_planner
+
+        try:
+            brief = run_explore(self._config, "Explore this repository so we can plan the current work.")
+            todos = run_planner(self._config, "Plan the current work.", brief)
+            self._todos = todos
+            return ["[plan] todo list updated:", *[f"{i}. {t}" for i, t in enumerate(todos, start=1)],
+                    "[plan] brief:", brief[:600]]
+        except Exception as exc:
+            return [f"[plan] failed: {exc}"]
 
     def _trajectory_text(self) -> str:
         return "\n".join(

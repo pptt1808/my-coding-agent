@@ -114,3 +114,80 @@ def test_e7_orchestrate_small_repo_single_agent(tmp_path):
     assert answer == "answer"
     # no explore model call happened: impl saw only one LLM call
     assert len(fake.tools_seen) == 1
+
+
+# ------------------------- Phase B: planner + parallel fan-out -------------------------
+
+def test_p1_parse_todos_strips_markers():
+    from agent.multi import parse_todos
+    text = "1. read stats.py\n- fix median\n* run tests\n2) report"
+    assert parse_todos(text) == ["read stats.py", "fix median", "run tests", "report"]
+    assert len(parse_todos("\n".join(f"{i}. step{i}" for i in range(1, 15)))) <= 10
+
+
+def test_p2_plan_block_and_planner(tmp_path):
+    from agent.multi import plan_block, run_planner
+
+    fake = ToolsRecordingLLM([LLMResult(text="1. read stats.py\n2. fix median\n", usage={"total_tokens": 1})])
+    cfg = Config(api_key="x", workdir=tmp_path)
+    todos = run_planner(cfg, "task", "brief", llm=fake)
+    assert todos == ["read stats.py", "fix median"]
+    assert "PLAN" in plan_block(todos)
+    assert "1. read stats.py" in plan_block(todos)
+
+
+def test_p3_orchestrate_with_plan_injects_brief_and_plan(tmp_path):
+    _build_repo(tmp_path, n_files=60, loc=2, with_subdirs=1)  # large -> auto explore
+    cfg = Config(api_key="x", workdir=tmp_path, auto_explore="auto", auto_plan="auto")
+
+    class PlanLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="1. fix bug\n2. run tests\n", usage={"total_tokens": 1})
+
+    class ImplLLM(ToolsRecordingLLM):
+        def __init__(self):
+            super().__init__([LLMResult(text="answer", usage={"total_tokens": 1})])
+
+    impl = ImplLLM()
+    _, brief = orchestrate(cfg, "fix it", explore_llm=PlanLLM(), planner_llm=PlanLLM(), impl_llm=impl)
+    assert brief is not None
+    assert "PLAN" in impl.systems[0] and "PROJECT BRIEF" in impl.systems[0]
+
+
+def test_f1_parallel_explore_merges_module_briefs(tmp_path):
+    from agent.multi import parallel_explore
+
+    _build_repo(tmp_path, n_files=1, loc=1, with_subdirs=3)  # src + mod0..2
+    cfg = Config(api_key="x", workdir=tmp_path, explore_brief_chars=500)
+
+    class ModLLM:
+        def __init__(self, content):
+            self.content = content
+
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text=self.content, usage={"total_tokens": 1})
+
+    llms = {"src": ModLLM("src brief"), "mod0": ModLLM("mod0 brief"), "mod1": ModLLM("mod1 brief"), "mod2": ModLLM("mod2 brief")}
+    from agent.multi import _top_level_modules
+    modules = _top_level_modules(tmp_path)
+    merged = parallel_explore(cfg, "explore", modules=modules, llms=llms)
+    assert "[src]" in merged and "[mod0]" in merged
+    assert len(merged) <= 500
+
+
+def test_f2_orchestrate_fanout_when_many_modules(tmp_path):
+    _build_repo(tmp_path, n_files=1, loc=1, with_subdirs=5)  # src + mod0..4 = 6 modules
+    cfg = Config(api_key="x", workdir=tmp_path, auto_explore="auto",
+                 parallel_explore="auto", explore_fanout_min_modules=4)
+
+    class ModLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="X", usage={"total_tokens": 1})
+
+    impl = ToolsRecordingLLM([LLMResult(text="answer", usage={"total_tokens": 1})])
+    from agent.multi import _top_level_modules
+    modules = _top_level_modules(tmp_path)
+    llms = {m: ModLLM() for m in modules}  # inject a fake for every module
+    _, brief = orchestrate(cfg, "explore", explore_llms=llms, impl_llm=impl)
+    assert brief is not None
+    assert "[" in brief  # fan-out produced module-labelled brief

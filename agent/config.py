@@ -64,6 +64,10 @@ class Config:
     explore_model: str = ""  # falls back to `model`
     explore_max_steps: int = 6
     explore_brief_chars: int = 1500
+    # Phase B: planner + parallel exploration (both gated, default off)
+    auto_plan: str = "off"  # off | auto | always  (plan todo from brief+task)
+    parallel_explore: str = "off"  # off | auto | always  (fan-out per top-level module)
+    explore_fanout_min_modules: int = 4
 
     @property
     def explore_model_name(self) -> str:
@@ -110,4 +114,7 @@ class Config:
             explore_model=os.environ.get("EXPLORE_MODEL", ""),
             explore_max_steps=int(os.environ.get("EXPLORE_MAX_STEPS", "6")),
             explore_brief_chars=int(os.environ.get("EXPLORE_BRIEF_CHARS", "1500")),
+            auto_plan=os.environ.get("AUTO_PLAN", "off"),
+            parallel_explore=os.environ.get("PARALLEL_EXPLORE", "off"),
+            explore_fanout_min_modules=int(os.environ.get("EXPLORE_FANOUT_MIN_MODULES", "4")),
         )
