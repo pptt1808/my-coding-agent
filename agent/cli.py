@@ -1,14 +1,24 @@
-"""CLI entrypoint (`coding-agent`). Phase 1 wires real behavior.
+"""CLI entrypoint (`coding-agent`).
 
-Currently only loads config and echoes the resolved settings so Phase 0 is
-runnable/verifiable end-to-end.
+Workspace selection (like other coding agents — launch inside your project):
+  * `cd <your-project> && coding-agent chat`  -> workdir = <your-project>
+  * `coding-agent chat --workdir <path>`      -> explicit workspace from anywhere
 """
 from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
+from pathlib import Path
 
 from .config import Config
+
+
+def apply_workdir(cfg: Config, workdir: str | None) -> Config:
+    """Override the workdir from a --workdir flag (absolute, resolved)."""
+    if not workdir:
+        return cfg
+    return replace(cfg, workdir=Path(workdir).resolve())
 
 
 def _cmd_config(_args: argparse.Namespace) -> int:
@@ -27,7 +37,7 @@ def _parse_tools(raw: str | None) -> list[str] | None:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
-    cfg = Config.from_env()
+    cfg = apply_workdir(Config.from_env(), args.workdir)
     from .loop import CodingAgent
 
     answer = CodingAgent(cfg, model=args.model, tools=_parse_tools(args.tools)).run(args.task)
@@ -36,7 +46,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat(args: argparse.Namespace) -> int:
-    cfg = Config.from_env()
+    cfg = apply_workdir(Config.from_env(), args.workdir)
     from .repl import ReplSession
 
     session = ReplSession(cfg, model=args.model, trace=args.trace, tools=_parse_tools(args.tools))
@@ -57,11 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("task", help="the coding task to complete")
     run.add_argument("--model", default=None, help="override the model tier (e.g. deepseek-v4-pro)")
     run.add_argument("--tools", default=None, help="comma-separated tool whitelist, e.g. read_file,edit_file")
+    run.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
     run.set_defaults(func=_cmd_run)
     chat = sub.add_parser("chat", help="start an interactive session (slash commands: /help /compact /status ...)")
     chat.add_argument("--model", default=None, help="override the model tier")
     chat.add_argument("--trace", action="store_true", help="print each agent step")
     chat.add_argument("--tools", default=None, help="comma-separated tool whitelist, e.g. read_file,edit_file")
+    chat.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
     chat.set_defaults(func=_cmd_chat)
     args = parser.parse_args(argv)
     return args.func(args)

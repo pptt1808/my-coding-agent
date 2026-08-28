@@ -75,3 +75,24 @@ def test_c6_eval_model_from_env(monkeypatch):
     cfg = Config.from_env()
     assert cfg.eval_model == "deepseek-v4-pro"
     assert cfg.eval_model_name == "deepseek-v4-pro"
+
+
+def test_c7_env_file_found_in_cwd(monkeypatch, tmp_path):
+    """Launch-inside-your-project convention: <cwd>/.env is found."""
+    monkeypatch.delenv("CODING_AGENT_ENV", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "API_KEY=sk-cwd\nMODEL=deepseek-v4-flash\n", encoding="utf-8")
+    cfg = Config.from_env()
+    assert cfg.api_key == "sk-cwd"
+    assert cfg.model == "deepseek-v4-flash"
+
+
+def test_c8_workdir_override(tmp_path):
+    """--workdir flag overrides the workspace explicitly."""
+    from agent.cli import apply_workdir
+
+    cfg = Config(api_key="x")
+    assert apply_workdir(cfg, None) is cfg  # no override -> unchanged
+    new_cfg = apply_workdir(cfg, str(tmp_path))
+    assert new_cfg.workdir == tmp_path.resolve()

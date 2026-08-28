@@ -19,6 +19,27 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+def _find_env_file() -> Path:
+    """Locate the .env file.
+
+    Search order (other coding agents' convention: launch in the project dir):
+      1. explicit CODING_AGENT_ENV (if set, use ONLY it);
+      2. <cwd>/.env                       (launch inside your project -> its .env);
+      3. <package root>/.env              (this project's own .env as a fallback);
+      4. ~/.coding-agent/.env             (user-level config).
+    """
+    explicit = os.environ.get("CODING_AGENT_ENV")
+    if explicit:
+        return Path(explicit)
+    candidates = [Path.cwd() / ".env"]
+    candidates.append(Path(__file__).resolve().parents[1] / ".env")
+    candidates.append(Path.home() / ".coding-agent" / ".env")
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]  # missing file is a harmless no-op for load_dotenv
+
+
 @dataclass(frozen=True)
 class Config:
     api_key: str
@@ -44,7 +65,7 @@ class Config:
     def from_env(cls, env_file: str | Path | None = None) -> "Config":
         """Build a Config from environment (optionally loading a .env file)."""
         if env_file is None:
-            env_file = Path(os.environ.get("CODING_AGENT_ENV", ".env"))
+            env_file = _find_env_file()
         load_dotenv(dotenv_path=env_file)
 
         api_key = os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY")
