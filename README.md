@@ -68,4 +68,9 @@ Phase 1 (minimum closed loop) done + verified against a REAL model:
 - **P2 iteration**: `/review` (diff since session start + tests + LLM judge), `/permissions [block|reset]`, `--tools` tool whitelist, tail-first output truncation — plus a **real fix**: no-progress now requires identical (tool+args) repetition, so exploring different files no longer kills the loop
 - **Multi-turn real demo** (`python examples/demo_multi_turn.py`, needs key): a multi-file project (bug + missing function + missing CLI flag + test suite) completed over 3 interactive turns — fix/implement/feature all landed, 7/7 tests pass, `/review` judge scored 5/5/5/5
 
-Next: Phase 7 (README.txt + demo video + interview materials).
+## Submission deliverables (Phase 7)
+- `README.txt` — 提交用说明（仓库地址占位、如何运行、特色功能；≤1000 汉字，当前 215 汉字）
+- `视频脚本.md` — 2 分钟演示视频时间轴 + 录制/后期清单
+- `面试自辩材料.md` — 为什么这样运转：四个自研点设计+踩坑、评测体系、尖锐问题预答、数据证据
+
+> 提交前必做：① 把公开仓库地址填入 README.txt；② 录制视频时隐藏一切 API key；③ 截止后不再推送新提交。
