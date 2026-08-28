@@ -25,6 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--task", default=None, help="run only this task id (e.g. parser_calc)")
     parser.add_argument("--model", default=None, help="override model tier for this run")
     parser.add_argument("--trace", action="store_true", help="print each agent step")
+    parser.add_argument("--multi", action="store_true",
+                        help="use the multi-agent pipeline (gated explore + planner) for A/B comparison")
     args = parser.parse_args(argv)
 
     cfg = Config.from_env()  # raises a clear error if no key is set
@@ -39,11 +41,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     model = args.model or cfg.eval_model_name
-    print(f"loaded {len(tasks)} task(s); agent tier: {model}")
+    print(f"loaded {len(tasks)} task(s); agent tier: {model}  multi={args.multi}")
     records = []
     for task in tasks:
-        print(f"\n=== running task: {task.id} ===")
-        record = run_task(task, cfg, trace=args.trace, model=model)
+        print(f"\n=== running task: {task.id} {'(multi-agent)' if args.multi else '(single-agent)'} ===")
+        record = run_task(task, cfg, trace=args.trace, model=model, multi=args.multi)
         print(f"task={task.id} {'PASS' if record.passed else 'FAIL'} "
               f"elapsed={record.elapsed_s:.1f}s tokens={record.tokens}")
         records.append(record)

@@ -80,20 +80,39 @@ def _build_trajectory(agent: CodingAgent) -> str:
 
 
 def run_task(task: Task, config: Config, llm: LLMClient | None = None, trace: bool = False,
-             model: str | None = None, judge: Judge | None = None) -> EvalRecord:
-    """Run one task against the agent in an isolated dir; return a graded record."""
+             model: str | None = None, judge: Judge | None = None, multi: bool = False) -> EvalRecord:
+    """Run one task against the agent in an isolated dir; return a graded record.
+
+    `multi=True` uses the multi-agent pipeline (explore subagent + planner with
+    `should_explore` gating) instead of a single agent — for A/B comparison.
+    """
     tmp = Path(tempfile.mkdtemp(prefix="eval-"))
     try:
         _populate(tmp, task)
-        # The agent must work INSIDE the isolated dir, not config.workdir.
         from dataclasses import replace
 
         agent_config = replace(config, workdir=tmp)
-        agent = CodingAgent(agent_config, llm=llm, model=model or config.eval_model_name, trace=trace)
 
-        start = time.monotonic()
-        answer = agent.run(task.description)
-        elapsed_s = time.monotonic() - start
+        if multi:
+            from agent.multi import orchestrate
+
+            mcfg = replace(config, workdir=tmp, model=model or config.eval_model_name,
+                           auto_explore="auto", auto_plan="auto", parallel_explore="auto",
+                           explore_model=config.model)
+            metrics: dict[str, Any] = {}
+            start = time.monotonic()
+            answer, _brief = orchestrate(mcfg, task.description, trace=trace, metrics=metrics)
+            elapsed_s = time.monotonic() - start
+            tokens = int(metrics.get("total_tokens", 0))
+        else:
+            from agent.loop import CodingAgent
+
+            agent = CodingAgent(agent_config, llm=llm, model=model or config.eval_model_name, trace=trace)
+            start = time.monotonic()
+            answer = agent.run(task.description)
+            elapsed_s = time.monotonic() - start
+            tokens = agent.total_tokens
+
         passed = _run_hidden_tests(tmp, task)
 
         rubric_scores: dict[str, float] = {}
@@ -101,7 +120,7 @@ def run_task(task: Task, config: Config, llm: LLMClient | None = None, trace: bo
             scorer = judge or Judge(config, model=model or config.eval_model_name)
             rubric_scores = scorer.score(
                 task.description,
-                _build_trajectory(agent),
+                _build_trajectory(agent) if not multi else "",
                 _collect_diff(task.repo_seed, tmp),
                 task.rubric,
             )
@@ -111,8 +130,8 @@ def run_task(task: Task, config: Config, llm: LLMClient | None = None, trace: bo
             passed=passed,
             rubric_scores=rubric_scores,
             elapsed_s=elapsed_s,
-            tokens=agent.total_tokens,
-            trajectory=_build_trajectory(agent),
+            tokens=tokens,
+            trajectory=_build_trajectory(agent) if not multi else "",
             final_answer=answer,
         )
     finally:

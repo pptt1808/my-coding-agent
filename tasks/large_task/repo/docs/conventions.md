@@ -1,0 +1,2 @@
+## Conventions
+- status is lowercase

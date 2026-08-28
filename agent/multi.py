@@ -129,7 +129,7 @@ def plan_block(todos: list[str]) -> str:
 
 
 def run_planner(config: Config, task: str, brief: str, *, llm: LLMClient | None = None,
-                trace: bool = False) -> list[str]:
+                trace: bool = False, metrics: dict[str, Any] | None = None) -> list[str]:
     """Cheap planner subagent: task + brief -> ordered todo list (Phase B)."""
     plan_cfg = replace(config, max_steps=config.explore_max_steps)
     agent = CodingAgent(
@@ -141,11 +141,21 @@ def run_planner(config: Config, task: str, brief: str, *, llm: LLMClient | None 
         system_prompt=PLANNER_PROMPT.format(workdir=config.workdir),
     )
     text = agent.run(f"TASK:\n{task}\n\nBRIEF:\n{brief}")
+    _record(metrics, agent)
     return parse_todos(text)
 
 
+def _record(metrics: dict[str, Any] | None, agent: CodingAgent) -> None:
+    """Accumulate a subagent's cost into a shared metrics dict (for A/B comparisons)."""
+    if metrics is None:
+        return
+    metrics["subagent_tokens"] = metrics.get("subagent_tokens", 0) + agent.total_tokens
+    metrics["subagent_steps"] = metrics.get("subagent_steps", 0) + agent.steps
+    metrics["subagents"] = metrics.get("subagents", 0) + 1
+
+
 def run_explore(config: Config, task: str, *, llm: LLMClient | None = None,
-                trace: bool = False) -> str:
+                trace: bool = False, metrics: dict[str, Any] | None = None) -> str:
     """Run the cheap, read-only exploration subagent; return the (bounded) brief."""
     explore_config = replace(config, max_steps=config.explore_max_steps)
     agent = CodingAgent(
@@ -157,11 +167,13 @@ def run_explore(config: Config, task: str, *, llm: LLMClient | None = None,
         system_prompt=EXPLORE_PROMPT.format(workdir=config.workdir),
     )
     brief = agent.run(task)
+    _record(metrics, agent)
     return brief[: config.explore_brief_chars]  # bounded (E6)
 
 
 def parallel_explore(config: Config, task: str, *, modules: list[str] | None = None,
-                     llms: dict[str, LLMClient] | None = None, trace: bool = False) -> str:
+                     llms: dict[str, LLMClient] | None = None, trace: bool = False,
+                     metrics: dict[str, Any] | None = None) -> str:
     """One read-only explore agent per top-level module, run concurrently (Phase B).
 
     Each subagent is scoped to its own module dir (workdir=<repo>/<module>), so
@@ -171,12 +183,12 @@ def parallel_explore(config: Config, task: str, *, modules: list[str] | None = N
     if modules is None:
         modules = _top_level_modules(root)
     if not modules:
-        return run_explore(config, task, trace=trace)
+        return run_explore(config, task, trace=trace, metrics=metrics)
 
     def _one(module_name: str) -> str:
         mod_cfg = replace(config, workdir=root / module_name)
         llm = (llms or {}).get(module_name)
-        return f"[{module_name}]\n{run_explore(mod_cfg, task, llm=llm, trace=trace)}"
+        return f"[{module_name}]\n{run_explore(mod_cfg, task, llm=llm, trace=trace, metrics=metrics)}"
 
     with ThreadPoolExecutor(max_workers=min(len(modules), 4)) as pool:
         results = list(pool.map(_one, modules))
@@ -190,13 +202,16 @@ def orchestrate(config: Config, task: str, *, explicit: int = 0, trace: bool = F
                 explore_llms: dict[str, LLMClient] | None = None,
                 planner_llm: LLMClient | None = None,
                 impl_llm: LLMClient | None = None,
-                on_brief: Any | None = None) -> tuple[str, str | None]:
+                on_brief: Any | None = None,
+                metrics: dict[str, Any] | None = None) -> tuple[str, str | None]:
     """Run the full pipeline, spawning the explore subagent ONLY when warranted.
 
     Returns (final answer, brief_or_None). The explore subagent is launched only
     if `should_explore` is true; otherwise this is a plain single-agent run with
     no extra subagent and no extra model cost. `on_brief` (optional) is invoked
     with the brief right after exploration, before the implement agent runs.
+    `metrics` (optional) accumulates token/step counts across all subagents for
+    A/B cost comparisons.
 
     Phase B: if `parallel_explore` is enabled and there are enough top-level
     modules, fan out one explore subagent per module; if `auto_plan` is enabled,
@@ -208,9 +223,9 @@ def orchestrate(config: Config, task: str, *, explicit: int = 0, trace: bool = F
         try:
             if config.parallel_explore in ("auto", "always") and \
                     stats.top_level_modules >= config.explore_fanout_min_modules:
-                brief = parallel_explore(config, task, llms=explore_llms, trace=trace)
+                brief = parallel_explore(config, task, llms=explore_llms, trace=trace, metrics=metrics)
             else:
-                brief = run_explore(config, task, llm=explore_llm, trace=trace)
+                brief = run_explore(config, task, llm=explore_llm, trace=trace, metrics=metrics)
         except Exception:
             brief = None  # explore failed -> downgrade to single agent (2.0.2)
         if brief and on_brief:
@@ -221,7 +236,7 @@ def orchestrate(config: Config, task: str, *, explicit: int = 0, trace: bool = F
         extra_parts.append(brief_block(brief))
     if brief and config.auto_plan != "off":
         try:
-            todos = run_planner(config, task, brief, llm=planner_llm, trace=trace)
+            todos = run_planner(config, task, brief, llm=planner_llm, trace=trace, metrics=metrics)
             if todos:
                 extra_parts.append(plan_block(todos))
         except Exception:
@@ -230,4 +245,8 @@ def orchestrate(config: Config, task: str, *, explicit: int = 0, trace: bool = F
     impl = CodingAgent(config, llm=impl_llm)
     answer = impl.run(task, stream=stream, on_delta=on_delta,
                       extra_system="\n\n".join(extra_parts) if extra_parts else "")
+    if metrics is not None:
+        metrics["impl_tokens"] = impl.total_tokens
+        metrics["impl_steps"] = impl.steps
+        metrics["total_tokens"] = impl.total_tokens + metrics.get("subagent_tokens", 0)
     return answer, brief

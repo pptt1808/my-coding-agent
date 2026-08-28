@@ -58,16 +58,16 @@ class Config:
     stream: bool = True  # stream model tokens to the terminal (R11/C9)
     # Multi-agent: cheap read-only exploration, gated (default OFF)
     auto_explore: str = "off"  # off | auto | always
-    explore_min_files: int = 50
-    explore_min_loc: int = 5000
-    explore_min_modules: int = 3
+    explore_min_files: int = 200
+    explore_min_loc: int = 20000
+    explore_min_modules: int = 6
     explore_model: str = ""  # falls back to `model`
     explore_max_steps: int = 6
     explore_brief_chars: int = 1500
     # Phase B: planner + parallel exploration (both gated, default off)
     auto_plan: str = "off"  # off | auto | always  (plan todo from brief+task)
     parallel_explore: str = "off"  # off | auto | always  (fan-out per top-level module)
-    explore_fanout_min_modules: int = 4
+    explore_fanout_min_modules: int = 8
 
     @property
     def explore_model_name(self) -> str:
@@ -108,13 +108,13 @@ class Config:
             auto_compact_at_tokens=int(os.environ.get("AUTO_COMPACT_AT_TOKENS", "0")),
             stream=os.environ.get("STREAM", "1") != "0",
             auto_explore=os.environ.get("AUTO_EXPLORE", "off"),
-            explore_min_files=int(os.environ.get("EXPLORE_MIN_FILES", "50")),
-            explore_min_loc=int(os.environ.get("EXPLORE_MIN_LOC", "5000")),
-            explore_min_modules=int(os.environ.get("EXPLORE_MIN_MODULES", "3")),
+            explore_min_files=int(os.environ.get("EXPLORE_MIN_FILES", "200")),
+            explore_min_loc=int(os.environ.get("EXPLORE_MIN_LOC", "20000")),
+            explore_min_modules=int(os.environ.get("EXPLORE_MIN_MODULES", "6")),
             explore_model=os.environ.get("EXPLORE_MODEL", ""),
             explore_max_steps=int(os.environ.get("EXPLORE_MAX_STEPS", "6")),
             explore_brief_chars=int(os.environ.get("EXPLORE_BRIEF_CHARS", "1500")),
             auto_plan=os.environ.get("AUTO_PLAN", "off"),
             parallel_explore=os.environ.get("PARALLEL_EXPLORE", "off"),
-            explore_fanout_min_modules=int(os.environ.get("EXPLORE_FANOUT_MIN_MODULES", "4")),
+            explore_fanout_min_modules=int(os.environ.get("EXPLORE_FANOUT_MIN_MODULES", "8")),
         )

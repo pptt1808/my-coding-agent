@@ -45,15 +45,16 @@ should_explore(config, task, repo_stats) :
        off(默认)      → False
        always         → True
        auto           → 进入启发式判断(仅当 repo 足够"大/复杂"):
-           repo_stats.n_files >= 50         (EXPLORE_MIN_FILES)
-           or repo_stats.loc      >= 5000   (EXPLORE_MIN_LOC)
-           or repo_stats.top_level_modules >= 3  (EXPLORE_MIN_MODULES)
+           repo_stats.n_files >= 200       (EXPLORE_MIN_FILES)
+           or repo_stats.loc      >= 20000 (EXPLORE_MIN_LOC)
+           or repo_stats.top_level_modules >= 6  (EXPLORE_MIN_MODULES)
         任一满足 → True，否则 False
 ```
 
 - **成本原则**：`repo_stats` 用一次性 `os.walk` 统计（文件数/LOC/顶层模块数），**零模型调用**、零 token、毫秒级——绝不为"判断要不要探索"再花钱；
-- **小仓库（我们现有 L1-L6 任务基本都是）→ 恒不探索**，直接单 agent 干，避免开销倒挂；
-- **可测试**：为 `should_explore` 写契约测试——小仓库返回 False（无须子 agent）、大仓库返回 True、`--explore`/`--no-explore` 覆盖优先级、`AUTO_EXPLORE=auto/off/always` 三态；
+- **小/中仓库 → 恒不探索**，直接单 agent 干，避免开销倒挂；
+- **A/B 实测（大任务 `large_task`，47 文件/7 模块，pro 档）**：单 agent 30.4s/23.5k tokens，多 agent（fan-out+planner）53.2s/**89.9k tokens**，结果均为 PASS、judge 5/5/5/5——**多 agent 对中量仓库是负收益**（+283% token / +75% 时间）。据此把默认阈值**调严**（min_files 50→200、min_loc 5000→20000、min_modules 3→6、fanout 4→8），该 47 文件任务不再触发；
+- **可测试**：`should_explore` 契约测试——小仓库返回 False（无须子 agent）、大仓库返回 True、`--explore`/`--no-explore` 覆盖优先级、`AUTO_EXPLORE=auto/off/always` 三态；
 - 配置项均走环境变量（`AUTO_EXPLORE`、`EXPLORE_MIN_FILES`、`EXPLORE_MIN_LOC`、`EXPLORE_MIN_MODULES`、`EXPLORE_MODEL`、`EXPLORE_MAX_STEPS`、`EXPLORE_BRIEF_CHARS`），阈值可调。
 
 ### 2.0.1 探索 agent 自身的"有界性"（防止它失控）

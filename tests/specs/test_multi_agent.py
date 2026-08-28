@@ -46,7 +46,8 @@ def test_e1_small_repo_no_explore(tmp_path):
 
 def test_e2_large_repo_explores(tmp_path):
     _build_repo(tmp_path, n_files=60, loc=2, with_subdirs=1)
-    cfg = Config(api_key="x", workdir=tmp_path, auto_explore="auto")
+    cfg = Config(api_key="x", workdir=tmp_path, auto_explore="auto",
+                 explore_min_files=50, explore_min_modules=3)
     assert should_explore(cfg) is True
 
 
@@ -138,7 +139,8 @@ def test_p2_plan_block_and_planner(tmp_path):
 
 def test_p3_orchestrate_with_plan_injects_brief_and_plan(tmp_path):
     _build_repo(tmp_path, n_files=60, loc=2, with_subdirs=1)  # large -> auto explore
-    cfg = Config(api_key="x", workdir=tmp_path, auto_explore="auto", auto_plan="auto")
+    cfg = Config(api_key="x", workdir=tmp_path, auto_explore="auto", auto_plan="auto",
+                 explore_min_files=50, explore_min_modules=3)
 
     class PlanLLM:
         def complete(self, _sys, _messages, _tools=None):
