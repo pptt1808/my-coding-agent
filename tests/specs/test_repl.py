@@ -148,6 +148,19 @@ def test_r12c_unknown_prefix_lists_commands(session):
     assert "/compact" in text  # available commands listed
 
 
+def test_r12d_fullwidth_slash_shows_menu(session):
+    """CJK IMEs often emit U+FF0F; it must behave like '/'."""
+    sess, _ = session
+    text = "\n".join(sess.handle("／"))
+    assert "/compact" in text and "/status" in text
+
+
+def test_r12e_fullwidth_slash_command_works(session):
+    sess, _ = session
+    sess.handle("／exit")
+    assert sess.running is False
+
+
 def test_r13_echo_input_renders_chat_box(capsys, tmp_path):
     class Fake:
         def complete(self, _sys, _messages, _tools=None):

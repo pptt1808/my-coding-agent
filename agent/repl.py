@@ -110,10 +110,12 @@ class ReplSession:
     # ------------------------------------------------------------------ input
 
     def handle(self, line: str) -> list[str]:
-        """Process one input line; returns lines to print (R1/R3-R12)."""
+        """Process one input line; returns lines to print (R1/R3-R13)."""
         line = line.strip()
         if not line:
             return []
+        if line.startswith("／"):  # full-width slash from CJK IMEs -> "/" (R12)
+            line = "/" + line[1:]
         if line.startswith("/"):
             return self._slash(line)
         return self._turn(line)

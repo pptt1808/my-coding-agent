@@ -63,6 +63,11 @@ def _cmd_chat(args: argparse.Namespace) -> int:
 
     if os.name == "nt":
         os.system("")  # enable ANSI/VT output in Windows cmd/terminal
+    for _stream in (sys.stdout, sys.stderr, sys.stdin):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # not a text stream / encoding unsupported
 
     session = ReplSession(cfg, model=args.model, trace=args.trace, tools=_parse_tools(args.tools),
                           stream=cfg.stream and not args.no_stream, echo_input=True)
