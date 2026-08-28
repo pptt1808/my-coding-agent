@@ -41,13 +41,15 @@ class CodingAgent:
     """A task-solving agent; `run`/`run_turn` for one-shot or conversational use."""
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
-                 trace: bool = False, tools: list[str] | None = None) -> None:
+                 trace: bool = False, tools: list[str] | None = None,
+                 system_prompt: str | None = None) -> None:
         self._config = config
         self._workdir = config.workdir
         self._model = model or config.model
         self._llm = llm or LLMClient(config, model=model)
         self._trace = trace
         self._allowed_tools = set(tools) if tools else None
+        self._system_prompt_override = system_prompt  # e.g. the read-only explore prompt
         self.total_tokens: int = 0
         self.input_tokens: int = 0
         self.output_tokens: int = 0
@@ -81,21 +83,25 @@ class CodingAgent:
         if self._trace:
             print(f"[trace] {msg}", flush=True)
 
-    def run(self, task: str, stream: bool = False, on_delta: Any | None = None) -> str:
+    def run(self, task: str, stream: bool = False, on_delta: Any | None = None,
+            extra_system: str = "") -> str:
         """Run the agent on a task and return its final answer (L1).
 
         `stream=True` prints model tokens as they arrive (when the LLM client
-        supports streaming); the returned answer is still the full text.
+        supports streaming); `extra_system` is appended to the system prompt
+        (e.g. the explore subagent's project brief).
         """
-        answer, _ = self.run_turn([{"role": "user", "content": task}], stream=stream, on_delta=on_delta)
+        answer, _ = self.run_turn([{"role": "user", "content": task}],
+                                  stream=stream, on_delta=on_delta, extra_system=extra_system)
         return answer
 
     def run_turn(self, messages: list[dict[str, Any]], extra_system: str = "",
                  stream: bool = False, on_delta: Any | None = None) -> tuple[str, list[dict[str, Any]]]:
         """Execute the loop starting from `messages` (already containing the new user turn).
 
-        `extra_system` is appended to the system prompt (e.g. the REPL's task list).
-        `stream=True` + `on_delta` streams text tokens as they arrive.
+        `extra_system` is appended to the system prompt (e.g. the REPL's task list /
+        the explore subagent's project brief). `stream=True` + `on_delta` streams
+        text tokens as they arrive.
 
         Returns (final answer, updated messages) so callers (e.g. the REPL) can
         continue the same conversation on the next turn.
@@ -107,7 +113,7 @@ class CodingAgent:
         )
 
         history: list[dict[str, Any]] = list(messages)
-        system_prompt = build_system_prompt(str(self._workdir))
+        system_prompt = self._system_prompt_override or build_system_prompt(str(self._workdir))
         if extra_system:
             system_prompt += "\n\n" + extra_system
         terminator = Terminator(self._config)

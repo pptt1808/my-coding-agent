@@ -89,7 +89,6 @@ def _parse_tools(raw: str | None) -> list[str] | None:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     cfg = apply_workdir(Config.from_env(), args.workdir)
-    from .loop import CodingAgent
 
     stream = cfg.stream and not args.no_stream
     streamed: list[str] = []
@@ -98,9 +97,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
         streamed.append(text)
         print(text, end="", flush=True)
 
+    explicit = (1 if args.explore else (-1 if args.no_explore else 0))
     try:
-        answer = CodingAgent(cfg, model=args.model, tools=_parse_tools(args.tools)).run(
-            args.task, stream=stream, on_delta=_on_delta)
+        from .multi import orchestrate
+
+        def _on_brief(brief: str) -> None:
+            print(f"[explore] project brief ({len(brief)} chars) gathered", flush=True)
+
+        answer, _brief = orchestrate(cfg, args.task, explicit=explicit,
+                                     stream=stream, on_delta=_on_delta, on_brief=_on_brief)
     except KeyboardInterrupt:
         print("\n(interrupted)", flush=True)
         return 130  # 128 + SIGINT (R14)
@@ -161,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--tools", default=None, help="comma-separated tool whitelist, e.g. read_file,edit_file")
     run.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
     run.add_argument("--no-stream", action="store_true", help="disable token streaming output")
+    run.add_argument("--explore", action="store_true", help="force the explore subagent (project brief)")
+    run.add_argument("--no-explore", action="store_true", help="never spawn the explore subagent")
     run.set_defaults(func=_cmd_run)
     chat = sub.add_parser("chat", help="start an interactive session (slash commands: /help /compact /status ...)")
     chat.add_argument("--model", default=None, help="override the model tier")

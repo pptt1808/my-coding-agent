@@ -38,13 +38,14 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /task done <n>   mark todo #n done (removes it)
   /task clear      clear the todo list
   /review          diff changes since session start, run tests, judge the diff
+  /explore         run a cheap read-only subagent and add a project brief to context
   /permissions     show workdir + blacklist
   /permissions block <pattern>   add a session blacklist pattern
   /permissions reset            restore the default blacklist
 Anything else is sent to the agent as a new turn."""
 
 COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
-            "save", "resume", "ls", "task", "review", "permissions"]
+            "save", "resume", "ls", "task", "review", "explore", "permissions"]
 
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
@@ -238,11 +239,24 @@ class ReplSession:
             return self._task(arg)
         if cmd == "/review":
             return self._review()
+        if cmd == "/explore":
+            return self._explore()
         if cmd == "/permissions":
             return self._permissions(arg)
         return [f"unknown command: {cmd}. Available: {', '.join('/' + c for c in COMMANDS)}"]
 
     # ------------------------------------------------------------- P2: review
+
+    def _explore(self) -> list[str]:
+        """Run the cheap read-only explore subagent and inject the brief into context."""
+        from .multi import brief_block, run_explore
+
+        try:
+            brief = run_explore(self._config, "Explore this repository so we can plan the current work.")
+            self._messages.append({"role": "user", "content": brief_block(brief) + "\n\n" + brief})
+            return [f"[explore] project brief ({len(brief)} chars) added to context:", brief[:1200]]
+        except Exception as exc:
+            return [f"[explore] failed: {exc}"]
 
     def _trajectory_text(self) -> str:
         return "\n".join(

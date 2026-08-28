@@ -56,6 +56,18 @@ class Config:
     max_elapsed_s: float = 600.0
     auto_compact_at_tokens: int = 0  # >0 enables auto-compaction above this history size
     stream: bool = True  # stream model tokens to the terminal (R11/C9)
+    # Multi-agent: cheap read-only exploration, gated (default OFF)
+    auto_explore: str = "off"  # off | auto | always
+    explore_min_files: int = 50
+    explore_min_loc: int = 5000
+    explore_min_modules: int = 3
+    explore_model: str = ""  # falls back to `model`
+    explore_max_steps: int = 6
+    explore_brief_chars: int = 1500
+
+    @property
+    def explore_model_name(self) -> str:
+        return self.explore_model or self.model
 
     @property
     def eval_model_name(self) -> str:
@@ -91,4 +103,11 @@ class Config:
             max_elapsed_s=float(os.environ.get("MAX_ELAPSED_S", "600")),
             auto_compact_at_tokens=int(os.environ.get("AUTO_COMPACT_AT_TOKENS", "0")),
             stream=os.environ.get("STREAM", "1") != "0",
+            auto_explore=os.environ.get("AUTO_EXPLORE", "off"),
+            explore_min_files=int(os.environ.get("EXPLORE_MIN_FILES", "50")),
+            explore_min_loc=int(os.environ.get("EXPLORE_MIN_LOC", "5000")),
+            explore_min_modules=int(os.environ.get("EXPLORE_MIN_MODULES", "3")),
+            explore_model=os.environ.get("EXPLORE_MODEL", ""),
+            explore_max_steps=int(os.environ.get("EXPLORE_MAX_STEPS", "6")),
+            explore_brief_chars=int(os.environ.get("EXPLORE_BRIEF_CHARS", "1500")),
         )

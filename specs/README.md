@@ -49,5 +49,6 @@ layer that grades the running agent — see 开发文档 §6.4.
 | `tasklist.md` | `agent/repl.py`, `agent/loop.py` | T1-T4 | ✅ P1 已实现 |
 | `permissions.md` | `agent/repl.py`, `tools/context.py` | P1-P3 | ✅ P2 已实现 |
 | `review.md` | `agent/repl.py`, `agent/diff.py`, `eval/judge.py` | RV1-RV4 | ✅ P2 已实现 |
+| `multi-agent.md` | `agent/multi.py`, `agent/cli.py`, `agent/repl.py` | E1-E7 | ✅ Phase A 已实现 |
 
 每份 spec 对应的契约测试在 `tests/specs/test_<name>.py`，应在实现**之前**编写（先红后绿）。
