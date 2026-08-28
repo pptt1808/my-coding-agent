@@ -28,14 +28,15 @@ cp .env.example .env        # then fill in your API key (never commit .env)
 ## Run
 ```bash
 coding-agent config         # print resolved configuration
-coding-agent run "fix the bug in src/util.py"          # dev tier (MODEL)
+coding-agent run "fix the bug in src/util.py"          # one-shot (dev tier MODEL)
 coding-agent run "..." --model deepseek-v4-pro         # override tier
+coding-agent chat            # interactive REPL: /help /exit /clear /compact /status /model
 python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs .env key)
 ```
 
 ## Tests
 ```bash
-pytest                      # 85 contract tests (specs/tools/loop/eval/...)
+pytest                      # 96 contract tests (specs/tools/loop/eval/repl/compact/...)
 ```
 
 ## Automated evaluation
@@ -54,5 +55,6 @@ Phase 1 (minimum closed loop) done + verified against a REAL model:
 - **Live smoke PASS** (real DeepSeek key, both flash & pro): fix-bug task → read → **edit_file** → verify via pytest → final answer
 - **Eval harness (Phase 5)**: `tasks/` task set (repo seed + hidden tests) → isolated temp-dir runs → hidden-test PASS/FAIL grading → markdown report. Real run: **2/2 PASS on both tiers** (pro avg 11.6s/8.5k tokens, flash avg 5.7s/6.6k tokens)
 - **LLM-judge (Phase 6)**: rubric scoring of quality dimensions tests can't catch (correctness/quality/minimal). Real run showed `minimal=2.0` — the judge penalized a whole-file rewrite vs a minimal edit
+- **Interactive REPL + /compact (P0 of the iteration plan)**: `coding-agent chat` — slash commands `/help /exit /clear /compact /status /model`; LLM-summary conversation compaction; live-verified (status → create+run file → status → compact → exit)
 
-Next: product polish + README.txt + demo video + interview materials (Phase 7).
+Next: P1 of the iteration plan (session persistence /resume, /task todo list, auto-compact), then Phase 7 (README.txt + demo video + interview materials).

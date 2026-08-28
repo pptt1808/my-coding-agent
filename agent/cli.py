@@ -27,6 +27,20 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_chat(args: argparse.Namespace) -> int:
+    cfg = Config.from_env()
+    from .repl import ReplSession
+
+    session = ReplSession(cfg, model=args.model, trace=args.trace)
+    print(f"coding-agent chat — model={session._agent.model} workdir={cfg.workdir}  (type /help)")
+    for line in sys.stdin:
+        for out in session.handle(line):
+            print(out, flush=True)
+        if not session.running:
+            break
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="coding-agent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -35,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("task", help="the coding task to complete")
     run.add_argument("--model", default=None, help="override the model tier (e.g. deepseek-v4-pro)")
     run.set_defaults(func=_cmd_run)
+    chat = sub.add_parser("chat", help="start an interactive session (slash commands: /help /compact /status ...)")
+    chat.add_argument("--model", default=None, help="override the model tier")
+    chat.add_argument("--trace", action="store_true", help="print each agent step")
+    chat.set_defaults(func=_cmd_chat)
     args = parser.parse_args(argv)
     return args.func(args)
 

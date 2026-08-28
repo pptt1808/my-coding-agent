@@ -35,12 +35,13 @@ def build_system_prompt(workdir: str) -> str:
 
 
 class CodingAgent:
-    """A single task-solving agent run."""
+    """A task-solving agent; `run`/`run_turn` for one-shot or conversational use."""
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
                  trace: bool = False) -> None:
         self._config = config
         self._workdir = config.workdir
+        self._model = model or config.model
         self._llm = llm or LLMClient(config, model=model)
         self._trace = trace
         self.total_tokens: int = 0
@@ -48,19 +49,50 @@ class CodingAgent:
         self.trajectory: list[dict[str, Any]] = []
         register_builtins()  # idempotent
 
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def set_model(self, name: str) -> None:
+        """Hot-switch the model tier mid-session (/model). Injected fakes are kept."""
+        self._model = name
+        if isinstance(self._llm, LLMClient):
+            self._llm = LLMClient(self._config, model=name)
+
+    def compact(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Compress a conversation into a single summary message (specs/compact.md)."""
+        if not messages:
+            return []
+        from .compact import summarize_conversation
+
+        summary = summarize_conversation(self._llm, messages)
+        return [{
+            "role": "user",
+            "content": f"[compacted conversation]\n{summary}\nContinue from here.",
+        }]
+
     def _log(self, msg: str) -> None:
         if self._trace:
             print(f"[trace] {msg}", flush=True)
 
     def run(self, task: str) -> str:
         """Run the agent on a task and return its final answer (L1)."""
+        answer, _ = self.run_turn([{"role": "user", "content": task}])
+        return answer
+
+    def run_turn(self, messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+        """Execute the loop starting from `messages` (already containing the new user turn).
+
+        Returns (final answer, updated messages) so callers (e.g. the REPL) can
+        continue the same conversation on the next turn.
+        """
         tools_context.configure(
             workdir=self._workdir,
             timeout=self._config.command_timeout,
             output_cap=self._config.output_cap_chars,
         )
 
-        history: list[dict[str, Any]] = [{"role": "user", "content": task}]
+        history: list[dict[str, Any]] = list(messages)
         system_prompt = build_system_prompt(str(self._workdir))
         terminator = Terminator(self._config)
         state = LoopState()
@@ -87,7 +119,8 @@ class CodingAgent:
             if not native_calls and fallback_call is None:
                 history.append({"role": "assistant", "content": result.text})
                 self._log(f"final answer: {result.text[:200]!r}")
-                return result.text
+                self.steps += state.steps
+                return result.text, history
 
             self._log("tool calls: " + ", ".join(
                 f"{tc.name}({json.dumps(tc.arguments, ensure_ascii=False)[:120]})"
@@ -121,11 +154,11 @@ class CodingAgent:
                 history.append({"role": "user", "content": f"[tool:{fallback_call.name}]\n{output}"})
                 last_tool = fallback_call.name
 
-        self.steps = state.steps
+        self.steps += state.steps
         return (
             "Error: agent loop stopped without a final answer "
             f"(steps={state.steps}, tool_calls={state.tool_calls})."
-        )
+        ), history
 
     def _dispatch(self, state: LoopState, tc: ToolCall, last_tool: str | None) -> str:
         """Run one tool, updating failure/progress counters (L2/L5)."""
