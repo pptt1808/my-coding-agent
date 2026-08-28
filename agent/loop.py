@@ -45,6 +45,8 @@ class CodingAgent:
         self._llm = llm or LLMClient(config, model=model)
         self._trace = trace
         self.total_tokens: int = 0
+        self.input_tokens: int = 0
+        self.output_tokens: int = 0
         self.steps: int = 0
         self.trajectory: list[dict[str, Any]] = []
         register_builtins()  # idempotent
@@ -80,8 +82,10 @@ class CodingAgent:
         answer, _ = self.run_turn([{"role": "user", "content": task}])
         return answer
 
-    def run_turn(self, messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    def run_turn(self, messages: list[dict[str, Any]], extra_system: str = "") -> tuple[str, list[dict[str, Any]]]:
         """Execute the loop starting from `messages` (already containing the new user turn).
+
+        `extra_system` is appended to the system prompt (e.g. the REPL's task list).
 
         Returns (final answer, updated messages) so callers (e.g. the REPL) can
         continue the same conversation on the next turn.
@@ -94,6 +98,8 @@ class CodingAgent:
 
         history: list[dict[str, Any]] = list(messages)
         system_prompt = build_system_prompt(str(self._workdir))
+        if extra_system:
+            system_prompt += "\n\n" + extra_system
         terminator = Terminator(self._config)
         state = LoopState()
         last_tool: str | None = None
@@ -103,6 +109,8 @@ class CodingAgent:
             state.steps += 1
             result = self._llm.complete(system_prompt, history, registry.tool_schemas())
             self.total_tokens += int(result.usage.get("total_tokens", 0))
+            self.input_tokens += int(result.usage.get("prompt_tokens", 0))
+            self.output_tokens += int(result.usage.get("completion_tokens", 0))
             self.trajectory.append({
                 "step": state.steps,
                 "text": result.text[:300],
@@ -111,6 +119,13 @@ class CodingAgent:
                 "usage": dict(result.usage),
             })
             self._log(f"step {state.steps}: usage={result.usage}")
+
+            # Auto-compaction (B2/P1): shrink the history when it grows past the threshold.
+            if self._config.auto_compact_at_tokens > 0:
+                estimate = sum(len(str(m.get("content", ""))) // 4 for m in history)
+                if estimate > self._config.auto_compact_at_tokens:
+                    self._log(f"auto-compacting history ({estimate} est. tokens)")
+                    history = self.compact(history)
 
             native_calls = parse_tool_calls(result)
             fallback_call = parse_tool_call_from_text(result.text) if not native_calls else None

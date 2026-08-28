@@ -86,3 +86,23 @@ def test_r8_model_switch_shown_in_status(session):
     sess.handle("/model deepseek-v4-pro")
     text = "\n".join(sess.handle("/status"))
     assert "deepseek-v4-pro" in text
+
+
+def test_r9_save_and_resume_restores_history(tmp_path):
+    fake = FakeLLM()
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    sess.handle("first task")
+    lines = sess.handle("/save my-session")
+    assert any("my-session" in line for line in lines)
+    sess2 = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    sess2.handle("/resume my-session")
+    sess2.handle("second task")
+    assert fake.calls[-1][0]["content"] == "first task"  # resumed history carried over
+    assert fake.calls[-1][-1]["content"] == "second task"
+
+
+def test_r10_cost_shows_token_split(session):
+    sess, _ = session
+    sess.handle("work")
+    text = "\n".join(sess.handle("/cost"))
+    assert "input" in text and "output" in text and "total" in text

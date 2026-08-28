@@ -5,7 +5,8 @@
 
 行为：
 - 普通行作为新用户消息加入历史并运行一轮 agent，返回最终回答（连续多轮共享历史）；
-- slash 命令：`/help`、`/exit`、`/clear`、`/compact`、`/status`、`/model <name>`；
+- slash 命令：`/help`、`/exit`、`/clear`、`/compact`、`/status`、`/model <name>`（P0）；
+- P1 新增：`/save [name]`、`/resume <name>`、`/ls`（会话持久化）、`/task add|list|done|clear`（任务清单）、`/cost`（用量统计）；
 - `/compact`：用 LLM 把会话压成结构化摘要，历史被替换为摘要消息；
 - `/status`：显示模型 / workdir / 步数 / token / 消息数；
 - `/exit` 终止会话；未知命令给出帮助提示且不崩溃。
@@ -18,4 +19,6 @@
 - R5 `/status` 含模型名与 token 信息；
 - R6 `/compact` 后历史被摘要替换（下一轮首条消息含摘要）；
 - R7 未知命令返回帮助提示且不崩溃；
-- R8 `/model <name>` 切换后 `/status` 显示新模型名。
+- R8 `/model <name>` 切换后 `/status` 显示新模型名；
+- R9 `/save name` + `/resume name` 恢复历史与统计（下一轮沿用保存的历史）；
+- R10 `/cost` 含 input/output/total token 信息。

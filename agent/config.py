@@ -33,6 +33,7 @@ class Config:
     max_consecutive_failures: int = 3
     no_progress_limit: int = 3
     max_elapsed_s: float = 600.0
+    auto_compact_at_tokens: int = 0  # >0 enables auto-compaction above this history size
 
     @property
     def eval_model_name(self) -> str:
@@ -66,4 +67,5 @@ class Config:
             max_consecutive_failures=int(os.environ.get("MAX_CONSECUTIVE_FAILURES", "3")),
             no_progress_limit=int(os.environ.get("NO_PROGRESS_LIMIT", "3")),
             max_elapsed_s=float(os.environ.get("MAX_ELAPSED_S", "600")),
+            auto_compact_at_tokens=int(os.environ.get("AUTO_COMPACT_AT_TOKENS", "0")),
         )
