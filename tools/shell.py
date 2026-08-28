@@ -43,5 +43,6 @@ def bash(command: str, *, timeout: int | None = None) -> str:
         out = f"[exit code: {proc.returncode}]\n" + out
     cap = context.output_cap()
     if len(out) > cap:
-        out = out[:cap] + f"\n... [truncated {len(out) - cap} chars]"
+        # Tail-first (C4b/P2): command errors/results usually sit at the end.
+        out = f"... [truncated {len(out) - cap} chars]\n" + out[-cap:]
     return out

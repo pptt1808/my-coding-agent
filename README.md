@@ -36,7 +36,7 @@ python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs
 
 ## Tests
 ```bash
-pytest                      # 107 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/...)
+pytest                      # 121 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
 ```
 
 ## Automated evaluation
@@ -57,5 +57,7 @@ Phase 1 (minimum closed loop) done + verified against a REAL model:
 - **LLM-judge (Phase 6)**: rubric scoring of quality dimensions tests can't catch (correctness/quality/minimal). Real run showed `minimal=2.0` — the judge penalized a whole-file rewrite vs a minimal edit
 - **Interactive REPL + /compact (P0 of the iteration plan)**: `coding-agent chat` — slash commands `/help /exit /clear /compact /status /model`; LLM-summary conversation compaction; live-verified (status → create+run file → status → compact → exit)
 - **P1 iteration**: `/save` `/resume` `/ls` session persistence (`.coding-agent/sessions/`), `/task` todo list injected into the system prompt, auto-compact (config `AUTO_COMPACT_AT_TOKENS`), `/cost` input/output token split — live-verified end to end
+- **P2 iteration**: `/review` (diff since session start + tests + LLM judge), `/permissions [block|reset]`, `--tools` tool whitelist, tail-first output truncation — plus a **real fix**: no-progress now requires identical (tool+args) repetition, so exploring different files no longer kills the loop
+- **Multi-turn real demo** (`python examples/demo_multi_turn.py`, needs key): a multi-file project (bug + missing function + missing CLI flag + test suite) completed over 3 interactive turns — fix/implement/feature all landed, 7/7 tests pass, `/review` judge scored 5/5/5/5
 
-Next: P2 of the iteration plan (/review, /permissions, --tools filtering, tail-first output), then Phase 7 (README.txt + demo video + interview materials).
+Next: Phase 7 (README.txt + demo video + interview materials).

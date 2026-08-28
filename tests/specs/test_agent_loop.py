@@ -88,3 +88,24 @@ def test_l5_tool_error_does_not_crash_loop(workdir):
     second_messages = fake.calls[1][1]
     contents = [str(m.get("content", "")) for m in second_messages]
     assert any("Error" in c for c in contents)
+
+
+def test_l6_exploring_different_files_is_not_no_progress(workdir):
+    """Reading several different files must NOT look like no-progress (T5/P2 fix)."""
+    fake = FakeLLM([
+        LLMResult(text="", tool_calls=[_read_tool("hello.txt")]),
+        LLMResult(text="", tool_calls=[ToolCall(id="c2", name="read_file", arguments={"path": "other.txt"})]),
+        LLMResult(text="", tool_calls=[ToolCall(id="c3", name="read_file", arguments={"path": "third.txt"})]),
+        LLMResult(text="answer"),
+    ])
+    agent = _agent(workdir, fake, no_progress_limit=2)
+    assert agent.run("explore") == "answer"
+
+
+def test_l7_identical_repeated_call_is_no_progress(workdir):
+    """The SAME tool+arguments repeated should stop the loop (T5)."""
+    same = [LLMResult(text="", tool_calls=[_read_tool("hello.txt")])] * 10
+    fake = FakeLLM(same)
+    agent = _agent(workdir, fake, no_progress_limit=2, max_steps=10)
+    out = agent.run("repeat the same call")
+    assert "Error" in out  # stopped by no-progress before finishing

@@ -7,14 +7,20 @@ lines are session-control slash commands. P0: /help /exit /clear /compact
 """
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from tools import context as tools_context
+
 from .config import Config
+from .diff import collect_diff, snapshot_dir
 from .llm import LLMClient
 from .loop import CodingAgent
 from .session import Session, list_sessions, load_session, new_session_id, save_session
+from eval.judge import Judge
 
 HELP = """slash commands:
   /help            show this help
@@ -31,19 +37,32 @@ HELP = """slash commands:
   /task list       show the todo list
   /task done <n>   mark todo #n done (removes it)
   /task clear      clear the todo list
+  /review          diff changes since session start, run tests, judge the diff
+  /permissions     show workdir + blacklist
+  /permissions block <pattern>   add a session blacklist pattern
+  /permissions reset            restore the default blacklist
 Anything else is sent to the agent as a new turn."""
+
+DEFAULT_REVIEW_RUBRIC = {
+    "correctness": "Does the change satisfy the requested behavior?",
+    "quality": "Is the code clear, idiomatic and free of dead code?",
+    "minimal": "Is the change minimal and on-topic?",
+}
 
 
 class ReplSession:
     """One interactive session: keeps the conversation between turns."""
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
-                 trace: bool = False) -> None:
+                 trace: bool = False, tools: list[str] | None = None,
+                 judge: Any | None = None) -> None:
         self._config = config
         self._llm = llm
-        self._agent = CodingAgent(config, llm=llm, model=model, trace=trace)
+        self._judge = judge
+        self._agent = CodingAgent(config, llm=llm, model=model, trace=trace, tools=tools)
         self._messages: list[dict[str, Any]] = []
         self._todos: list[str] = []
+        self._snapshot = snapshot_dir(self._config.workdir)  # for /review
         self.running = True
 
     # ------------------------------------------------------------------ input
@@ -135,7 +154,64 @@ class ReplSession:
             ]
         if cmd == "/task":
             return self._task(arg)
+        if cmd == "/review":
+            return self._review()
+        if cmd == "/permissions":
+            return self._permissions(arg)
         return [f"unknown command: {cmd}. Type /help for usage."]
+
+    # ------------------------------------------------------------- P2: review
+
+    def _trajectory_text(self) -> str:
+        return "\n".join(
+            f"step {e['step']}: text={e['text']!r} calls={e['tool_calls']}"
+            for e in self._agent.trajectory
+        )
+
+    def _review(self) -> list[str]:
+        current = snapshot_dir(self._config.workdir)
+        diff = collect_diff(self._snapshot, current)
+        if not diff:
+            return ["nothing to review (no changes since session start)"]
+
+        lines = ["[review] diff since session start:", diff[:1500]]
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q"],
+                cwd=self._config.workdir, capture_output=True, text=True,
+                timeout=120, encoding="utf-8", errors="replace",
+            )
+            if proc.returncode == 0:
+                lines.append("[review] tests: PASS")
+            else:
+                tail = ((proc.stdout or "") + (proc.stderr or ""))[-400:]
+                lines.append(f"[review] tests: FAIL\n{tail}")
+        except Exception as exc:
+            lines.append(f"[review] tests: skipped ({exc})")
+
+        judge = self._judge or Judge(self._config, model=self._agent.model)
+        scores = judge.score("", self._trajectory_text(), diff, DEFAULT_REVIEW_RUBRIC)
+        lines.append("[review] judge: " + ", ".join(f"{k}={v}" for k, v in scores.items()))
+        rationale = getattr(judge, "last_rationale", "")
+        if rationale:
+            lines.append(f"[review] rationale: {rationale}")
+        return lines
+
+    # --------------------------------------------------------- P2: permissions
+
+    def _permissions(self, arg: str) -> list[str]:
+        sub, _, pattern = arg.partition(" ")
+        if sub == "block" and pattern.strip():
+            tools_context.configure(extra_blacklist=[pattern.strip()])
+            return [f"blocked pattern (session only): {pattern.strip()}"]
+        if sub == "reset":
+            tools_context.configure(extra_blacklist=[])
+            return ["blacklist reset to default"]
+        return [
+            f"workdir={self._config.workdir}",
+            "blacklist: " + ", ".join(tools_context.blacklist()),
+            "usage: /permissions [block <pattern>|reset]",
+        ]
 
     def _apply_session(self, saved: Session) -> list[str]:
         """Restore a saved session: messages, model, stats; rebuild agent if workdir changed."""

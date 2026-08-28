@@ -10,7 +10,6 @@ Flow:
 """
 from __future__ import annotations
 
-import difflib
 import shutil
 import subprocess
 import sys
@@ -65,26 +64,12 @@ def _run_hidden_tests(repo: Path, task: Task) -> bool:
 
 def _collect_diff(seed: Path, repo: Path) -> str:
     """Unified diff between the seed repo and the agent's final workspace."""
-    hidden = {p.relative_to(repo) for p in (repo / "_hidden_tests").rglob("*")} if (repo / "_hidden_tests").exists() else set()
-    seed_files = {p.relative_to(seed) for p in seed.rglob("*") if p.is_file()}
-    repo_files = {p.relative_to(repo) for p in repo.rglob("*") if p.is_file() and p.relative_to(repo) not in hidden}
+    from agent.diff import collect_diff_dirs
 
-    diffs: list[str] = []
-    for rel in sorted(seed_files | repo_files):
-        old_p, new_p = seed / rel, repo / rel
-        try:
-            old_text = old_p.read_text(encoding="utf-8", errors="replace") if old_p.exists() else ""
-        except Exception:
-            continue
-        try:
-            new_text = new_p.read_text(encoding="utf-8", errors="replace") if new_p.exists() else ""
-        except Exception:
-            continue
-        if old_text == new_text:
-            continue
-        diffs.append(f"--- a/{rel}\n+++ b/{rel}\n")
-        diffs.extend(difflib.unified_diff(old_text.splitlines(), new_text.splitlines(), lineterm="", n=1))
-    return "\n".join(diffs)
+    return collect_diff_dirs(
+        seed, repo,
+        skip_dirs={"__pycache__", ".git", ".pytest_cache", "_hidden_tests", ".coding-agent"},
+    )
 
 
 def _build_trajectory(agent: CodingAgent) -> str:

@@ -45,7 +45,8 @@ def read_file(path: str) -> str:
         return f"Error: cannot read {path}: {exc}"
     cap = context.output_cap()
     if len(text) > cap:
-        text = text[:cap] + f"\n... [truncated {len(text) - cap} chars]"
+        # Tail-first (A3b/P2): errors and results usually sit at the end.
+        text = f"... [truncated {len(text) - cap} chars]\n" + text[-cap:]
     return text
 
 

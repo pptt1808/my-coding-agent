@@ -22,9 +22,11 @@ def register(
     _HANDLERS[name] = handler
 
 
-def tool_schemas() -> list[dict[str, Any]]:
-    """Return the list of JSON-schema tool definitions for the model."""
-    return list(_SCHEMAS.values())
+def tool_schemas(allowed: list[str] | None = None) -> list[dict[str, Any]]:
+    """Return tool schemas for the model (optionally filtered to `allowed` names, E1/P2)."""
+    if allowed is None:
+        return list(_SCHEMAS.values())
+    return [_SCHEMAS[name] for name in allowed if name in _SCHEMAS]
 
 
 def dispatch(name: str, arguments: dict[str, Any]) -> str:

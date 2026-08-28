@@ -44,6 +44,15 @@ def test_a3_long_file_is_truncated(_isolated_context):
     assert "truncated" in out
 
 
+def test_a3b_tail_preserved_on_truncation(_isolated_context):
+    long = "x" * 300 + "THE_END"
+    path = _isolated_context / "long.txt"
+    path.write_text(long, encoding="utf-8")
+    context.configure(output_cap=50)
+    out = read_file(str(path))
+    assert "THE_END" in out  # tail-first: key info at the end survives
+
+
 # ---- write_file: B1/B2 ----
 def test_b1_write_then_read(_isolated_context):
     path = _isolated_context / "out.py"
@@ -75,6 +84,14 @@ def test_c3_bash_timeout_is_caught(_isolated_context):
 def test_c4_dangerous_command_blocked(_isolated_context):
     out = bash("rm -rf /")
     assert "blocked" in out.lower() or "Error" in out
+
+
+def test_c4b_bash_tail_preserved(_isolated_context):
+    script = _isolated_context / "big_print.py"
+    script.write_text('print("line" * 200)\nprint("FINAL_RESULT_OK")\n', encoding="utf-8")
+    context.configure(output_cap=100)
+    out = bash(f"python big_print.py", timeout=30)
+    assert "FINAL_RESULT_OK" in out  # tail-first truncation keeps the end
 
 
 # ---- list_dir: L1/L2/L3 ----

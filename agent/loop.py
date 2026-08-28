@@ -38,12 +38,13 @@ class CodingAgent:
     """A task-solving agent; `run`/`run_turn` for one-shot or conversational use."""
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
-                 trace: bool = False) -> None:
+                 trace: bool = False, tools: list[str] | None = None) -> None:
         self._config = config
         self._workdir = config.workdir
         self._model = model or config.model
         self._llm = llm or LLMClient(config, model=model)
         self._trace = trace
+        self._allowed_tools = set(tools) if tools else None
         self.total_tokens: int = 0
         self.input_tokens: int = 0
         self.output_tokens: int = 0
@@ -103,11 +104,12 @@ class CodingAgent:
         terminator = Terminator(self._config)
         state = LoopState()
         last_tool: str | None = None
+        self._last_call_key: str | None = None
         start = time.monotonic()
 
         while not terminator.should_stop(state, time.monotonic() - start):
             state.steps += 1
-            result = self._llm.complete(system_prompt, history, registry.tool_schemas())
+            result = self._llm.complete(system_prompt, history, registry.tool_schemas(self._allowed_tools))
             self.total_tokens += int(result.usage.get("total_tokens", 0))
             self.input_tokens += int(result.usage.get("prompt_tokens", 0))
             self.output_tokens += int(result.usage.get("completion_tokens", 0))
@@ -158,16 +160,16 @@ class CodingAgent:
                 for tc in native_calls:
                     state.tool_calls += 1
                     output = self._dispatch(state, tc, last_tool)
-                    history.append({"role": "tool", "tool_call_id": tc.id, "content": output})
                     last_tool = tc.name
+                    history.append({"role": "tool", "tool_call_id": tc.id, "content": output})
             else:
                 # Text-protocol fallback: assistant text + tool output as a user turn.
                 assert fallback_call is not None
                 history.append({"role": "assistant", "content": result.text})
                 state.tool_calls += 1
                 output = self._dispatch(state, fallback_call, last_tool)
-                history.append({"role": "user", "content": f"[tool:{fallback_call.name}]\n{output}"})
                 last_tool = fallback_call.name
+                history.append({"role": "user", "content": f"[tool:{fallback_call.name}]\n{output}"})
 
         self.steps += state.steps
         return (
@@ -176,15 +178,28 @@ class CodingAgent:
         ), history
 
     def _dispatch(self, state: LoopState, tc: ToolCall, last_tool: str | None) -> str:
-        """Run one tool, updating failure/progress counters (L2/L5)."""
+        """Run one tool, updating failure/progress counters (L2/L5).
+
+        Tools not enabled via `--tools` are blocked before execution (E1/P2).
+        No-progress is only counted for *identical* repeated calls (same tool
+        + same arguments) — exploring several different files must not look
+        like no progress.
+        """
+        if self._allowed_tools is not None and tc.name not in self._allowed_tools:
+            output = f"Error: tool '{tc.name}' is not enabled in this session"
+            self._log(f"  {tc.name} -> blocked (not enabled)")
+            state.consecutive_failures += 1
+            return output
         output = registry.dispatch(tc.name, tc.arguments)
         self._log(f"  {tc.name} -> {output[:160]!r}")
         if output.startswith("Error:"):
             state.consecutive_failures += 1
         else:
             state.consecutive_failures = 0
-        if tc.name == last_tool:
+        call_key = json.dumps([tc.name, tc.arguments], sort_keys=True, ensure_ascii=False)
+        if call_key == self._last_call_key:
             state.no_progress_count += 1
         else:
             state.no_progress_count = 0
+        self._last_call_key = call_key
         return output

@@ -7,6 +7,7 @@
 - 普通行作为新用户消息加入历史并运行一轮 agent，返回最终回答（连续多轮共享历史）；
 - slash 命令：`/help`、`/exit`、`/clear`、`/compact`、`/status`、`/model <name>`（P0）；
 - P1 新增：`/save [name]`、`/resume <name>`、`/ls`（会话持久化）、`/task add|list|done|clear`（任务清单）、`/cost`（用量统计）；
+- P2 新增：`/review`（自查改动 + judge 评分）、`/permissions [block <pattern>|reset]`（权限查看/调整）；`--tools read_file,edit_file`（工具按需裁剪，run 与 chat 均支持）；大输出改为**尾部优先**截断；
 - `/compact`：用 LLM 把会话压成结构化摘要，历史被替换为摘要消息；
 - `/status`：显示模型 / workdir / 步数 / token / 消息数；
 - `/exit` 终止会话；未知命令给出帮助提示且不崩溃。
