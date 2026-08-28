@@ -7,6 +7,7 @@ Workspace selection (like other coding agents — launch inside your project):
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -58,16 +59,27 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _cmd_chat(args: argparse.Namespace) -> int:
     cfg = apply_workdir(Config.from_env(), args.workdir)
-    from .repl import ReplSession
+    from .repl import C_PROMPT, C_RESET, ReplSession
+
+    if os.name == "nt":
+        os.system("")  # enable ANSI/VT output in Windows cmd/terminal
 
     session = ReplSession(cfg, model=args.model, trace=args.trace, tools=_parse_tools(args.tools),
-                          stream=cfg.stream and not args.no_stream)
+                          stream=cfg.stream and not args.no_stream, echo_input=True)
     print(f"coding-agent chat — model={session._agent.model} workdir={cfg.workdir}  (type / for commands)")
-    for line in sys.stdin:
+
+    while session.running:
+        if sys.stdin.isatty():
+            try:
+                line = input(f"{C_PROMPT}❯{C_RESET} ")
+            except EOFError:
+                break
+        else:
+            line = sys.stdin.readline()
+            if not line:
+                break
         for out in session.handle(line):
             print(out, flush=True)
-        if not session.running:
-            break
     return 0
 
 

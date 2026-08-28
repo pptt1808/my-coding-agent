@@ -52,13 +52,50 @@ DEFAULT_REVIEW_RUBRIC = {
     "minimal": "Is the change minimal and on-topic?",
 }
 
+# ANSI colors for the chat UI (R13)
+C_RESET = "\033[0m"
+C_CYAN = "\033[36m"
+C_PROMPT = "\033[32m"  # green prompt
+
+
+def _display_width(text: str) -> int:
+    """Terminal display width: CJK/full-width chars count as 2."""
+    return sum(2 if ord(c) > 0x2E7F else 1 for c in text)
+
+
+def _truncate_dw(line: str, width: int) -> str:
+    acc = 0
+    for i, ch in enumerate(line):
+        acc += 2 if ord(ch) > 0x2E7F else 1
+        if acc > width:
+            return line[:i] + "…"
+    return line
+
+
+def render_chat_box(text: str, prefix: str = "你") -> str:
+    """A chat bubble around the user's input (R13)."""
+    lines = text.splitlines() or [""]
+    lines = [f"{prefix}: {lines[0]}"] + lines[1:]
+    width = min(max(max(_display_width(l) for l in lines), 12), 76)
+    top = "┌" + "─" * (width + 2) + "┐"
+    middle = []
+    for line in lines:
+        lw = _display_width(line)
+        if lw > width:
+            line = _truncate_dw(line, width)
+            lw = _display_width(line)
+        middle.append("│ " + line + " " * (width - lw) + " │")
+    bottom = "└" + "─" * (width + 2) + "┘"
+    return "\n".join([top, *middle, bottom])
+
 
 class ReplSession:
     """One interactive session: keeps the conversation between turns."""
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
                  trace: bool = False, tools: list[str] | None = None,
-                 judge: Any | None = None, stream: bool = True) -> None:
+                 judge: Any | None = None, stream: bool = True,
+                 echo_input: bool = False) -> None:
         self._config = config
         self._llm = llm
         self._judge = judge
@@ -67,6 +104,7 @@ class ReplSession:
         self._todos: list[str] = []
         self._snapshot = snapshot_dir(self._config.workdir)  # for /review
         self._stream = stream
+        self._echo_input = echo_input
         self.running = True
 
     # ------------------------------------------------------------------ input
@@ -87,6 +125,8 @@ class ReplSession:
         return "TASK LIST (track your work against these items):\n" + items
 
     def _turn(self, line: str) -> list[str]:
+        if self._echo_input:
+            print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
         self._messages.append({"role": "user", "content": line})
         if self._stream:
             streamed: list[str] = []

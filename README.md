@@ -30,13 +30,13 @@ cp .env.example .env        # then fill in your API key (never commit .env)
 coding-agent config         # print resolved configuration
 coding-agent run "fix the bug in src/util.py"          # one-shot (dev tier MODEL)
 coding-agent run "..." --model deepseek-v4-pro         # override tier
-coding-agent chat            # interactive REPL (streaming; type "/" for the command menu, "/sta" expands)
+coding-agent chat            # interactive REPL (streaming, chat-bubble input, type "/" for the command menu)
 python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs .env key)
 ```
 
 ## Tests
 ```bash
-pytest                      # 131 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
+pytest                      # 133 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
 ```
 
 ## Evaluation task set (difficulty gradient)

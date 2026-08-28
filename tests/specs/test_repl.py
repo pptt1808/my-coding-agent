@@ -146,3 +146,28 @@ def test_r12c_unknown_prefix_lists_commands(session):
     text = "\n".join(lines)
     assert "unknown" in text
     assert "/compact" in text  # available commands listed
+
+
+def test_r13_echo_input_renders_chat_box(capsys, tmp_path):
+    class Fake:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="ok", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=Fake(),
+                       stream=False, echo_input=True)
+    lines = sess.handle("修复这个 bug")
+    assert lines == ["ok"]
+    captured = capsys.readouterr().out
+    assert "┌" in captured and "└" in captured  # chat box drawn
+    assert "修复这个 bug" in captured  # input echoed inside the box
+
+
+def test_r13b_echo_input_off_by_default(capsys, tmp_path):
+    class Fake:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="ok", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=Fake(), stream=False)
+    sess.handle("hello")
+    captured = capsys.readouterr().out
+    assert "┌" not in captured
