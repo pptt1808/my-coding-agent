@@ -22,13 +22,20 @@ def test_s1_roundtrip(tmp_path):
 
 
 def test_s2_list_sessions_newest_first_and_skips_bad(tmp_path):
+    import os
+    import time
+
     a = Session(id="a", model="m", workdir=str(tmp_path), messages=[{"role": "user", "content": "1"}])
     b = Session(id="b", model="m", workdir=str(tmp_path), messages=[{"role": "user", "content": "2"}])
     save_session(a, tmp_path)
     save_session(b, tmp_path)
+    # control mtimes so ordering is deterministic (newest = a)
+    base = time.time()
+    os.utime(tmp_path / ".coding-agent" / "sessions" / "b.json", (base, base + 1))
+    os.utime(tmp_path / ".coding-agent" / "sessions" / "a.json", (base, base + 2))
     (tmp_path / ".coding-agent" / "sessions" / "bad.json").write_text("{not json", encoding="utf-8")
     ids = [s.id for s in list_sessions(tmp_path)]
-    assert ids == ["b", "a"]
+    assert ids == ["a", "b"]
 
 
 def test_s3_missing_session_raises(tmp_path):

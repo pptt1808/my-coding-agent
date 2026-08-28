@@ -184,3 +184,27 @@ def test_r13b_echo_input_off_by_default(capsys, tmp_path):
     sess.handle("hello")
     captured = capsys.readouterr().out
     assert "┌" not in captured
+
+
+def test_r14_ctrl_c_mid_turn_restores_history(tmp_path):
+    import pytest as _pytest
+
+    class OkLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="ok", usage={"total_tokens": 1})
+
+    class InterruptingLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            raise KeyboardInterrupt
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=OkLLM(), stream=False)
+    sess.handle("hello")
+    before = list(sess._messages)
+
+    sess._agent._llm = InterruptingLLM()  # simulate Ctrl+C during a turn
+    with _pytest.raises(KeyboardInterrupt):
+        sess.handle("explode")
+    assert sess._messages == before  # interrupted turn fully rolled back
+
+    sess._agent._llm = OkLLM()
+    assert sess.handle("again") == ["ok"]  # session still usable

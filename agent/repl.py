@@ -129,23 +129,30 @@ class ReplSession:
     def _turn(self, line: str) -> list[str]:
         if self._echo_input:
             print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
+        prev_messages = list(self._messages)  # for Ctrl+C rollback (R14)
         self._messages.append({"role": "user", "content": line})
-        if self._stream:
-            streamed: list[str] = []
+        try:
+            if self._stream:
+                streamed: list[str] = []
 
-            def _on_delta(text: str) -> None:
-                streamed.append(text)
-                print(text, end="", flush=True)
+                def _on_delta(text: str) -> None:
+                    streamed.append(text)
+                    print(text, end="", flush=True)
 
+                answer, self._messages = self._agent.run_turn(
+                    self._messages, extra_system=self._task_block(), stream=True, on_delta=_on_delta,
+                )
+                if streamed:
+                    print()  # newline after the streamed answer
+                    return []  # already printed live (R11: no duplicate)
+                return [answer]
             answer, self._messages = self._agent.run_turn(
-                self._messages, extra_system=self._task_block(), stream=True, on_delta=_on_delta,
-            )
-            if streamed:
-                print()  # newline after the streamed answer
-                return []  # already printed live (R11: no duplicate)
+                self._messages, extra_system=self._task_block())
             return [answer]
-        answer, self._messages = self._agent.run_turn(self._messages, extra_system=self._task_block())
-        return [answer]
+        except KeyboardInterrupt:
+            # Ctrl+C mid-turn: discard partial output and restore the conversation.
+            self._messages = prev_messages
+            raise
 
     # ---------------------------------------------------------------- slash
 

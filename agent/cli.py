@@ -48,8 +48,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
         streamed.append(text)
         print(text, end="", flush=True)
 
-    answer = CodingAgent(cfg, model=args.model, tools=_parse_tools(args.tools)).run(
-        args.task, stream=stream, on_delta=_on_delta)
+    try:
+        answer = CodingAgent(cfg, model=args.model, tools=_parse_tools(args.tools)).run(
+            args.task, stream=stream, on_delta=_on_delta)
+    except KeyboardInterrupt:
+        print("\n(interrupted)", flush=True)
+        return 130  # 128 + SIGINT (R14)
     if streamed:
         print()  # finish the line after streaming
     else:
@@ -74,17 +78,26 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     print(f"coding-agent chat — model={session._agent.model} workdir={cfg.workdir}  (type / for commands)")
 
     while session.running:
-        if sys.stdin.isatty():
-            try:
-                line = input(f"{C_PROMPT}❯{C_RESET} ")
-            except EOFError:
-                break
-        else:
-            line = sys.stdin.readline()
-            if not line:
-                break
-        for out in session.handle(line):
-            print(out, flush=True)
+        try:
+            if sys.stdin.isatty():
+                try:
+                    line = input(f"{C_PROMPT}❯{C_RESET} ")
+                except EOFError:
+                    break
+            else:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+        except KeyboardInterrupt:
+            print("bye.")
+            return 0
+        try:
+            for out in session.handle(line):
+                print(out, flush=True)
+        except KeyboardInterrupt:
+            # Ctrl+C mid-turn: cancel this turn, keep the session alive (R14)
+            print("\n[cancelled]", flush=True)
+    print("bye.")
     return 0
 
 

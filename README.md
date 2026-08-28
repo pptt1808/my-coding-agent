@@ -36,7 +36,7 @@ python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs
 
 ## Tests
 ```bash
-pytest                      # 133 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
+pytest                      # 136 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
 ```
 
 ## Evaluation task set (difficulty gradient)
