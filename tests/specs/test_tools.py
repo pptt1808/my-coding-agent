@@ -94,6 +94,16 @@ def test_c4b_bash_tail_preserved(_isolated_context):
     assert "FINAL_RESULT_OK" in out  # tail-first truncation keeps the end
 
 
+def test_c5_bash_schema_mentions_windows_env():
+    """Gradient-test fix: the model must be told it runs on Windows cmd."""
+    from tools.schemas import BASH
+
+    desc = BASH["function"]["description"]
+    assert "Windows" in desc
+    assert "heredoc" in desc
+    assert "python -c" in desc
+
+
 # ---- list_dir: L1/L2/L3 ----
 def test_l1_list_dir_entries(_isolated_context):
     (_isolated_context / "a.py").write_text("x", encoding="utf-8")

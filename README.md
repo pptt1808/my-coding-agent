@@ -36,8 +36,16 @@ python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs
 
 ## Tests
 ```bash
-pytest                      # 121 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
+pytest                      # 123 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/...)
 ```
+
+## Evaluation task set (difficulty gradient)
+```bash
+python -m eval tasks                        # run all 6 tasks (eval tier)
+python -m eval tasks --task parser_calc     # run one task
+```
+L1 fix_add_bug → L2 implement_fib → L3 refactor_rename → L4 lru_cache → L5 parser_calc → L6 first_occurrence.
+Gradient runs found real issues (now fixed): Windows cmd heredoc/`find` incompatibility → bash schema + system prompt now tell the model the platform (parser_calc: 283.9s/163k tokens → 171.6s/131k tokens).
 
 ## Automated evaluation
 ```bash

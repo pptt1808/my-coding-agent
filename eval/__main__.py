@@ -22,12 +22,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m eval")
     parser.add_argument("tasks_dir", nargs="?", default="tasks",
                         help="directory containing task dirs (default: tasks)")
+    parser.add_argument("--task", default=None, help="run only this task id (e.g. parser_calc)")
     parser.add_argument("--model", default=None, help="override model tier for this run")
     parser.add_argument("--trace", action="store_true", help="print each agent step")
     args = parser.parse_args(argv)
 
     cfg = Config.from_env()  # raises a clear error if no key is set
     tasks = load_tasks(args.tasks_dir)
+    if args.task:
+        tasks = [t for t in tasks if t.id == args.task]
+        if not tasks:
+            print(f"task not found: {args.task}")
+            return 1
     if not tasks:
         print(f"no tasks found under {args.tasks_dir}")
         return 1

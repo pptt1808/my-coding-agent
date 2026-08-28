@@ -23,13 +23,14 @@
 
 ## bash
 - 接口：`bash(command: str) -> str`
-- 行为：带超时执行命令，捕获 stdout/stderr，超时/失败返回干净错误文本；遵守危险命令黑名单（B4）；**超长输出尾部优先**截断（错误/结果通常在末尾）。
+- 行为：带超时执行命令，捕获 stdout/stderr，超时/失败返回干净错误文本；遵守危险命令黑名单（B4）；**超长输出尾部优先**截断（错误/结果通常在末尾）；**schema 描述必须提示 Windows cmd 环境**（无 heredoc/Unix find，建议 python -c 与 glob/grep 工具）。
 - 验收标准（可自动验证）：
   - C1 正常命令返回其输出；
   - C2 失败命令返回错误文本且不崩溃；
   - C3 超时命令被终止并返回超时错误；
   - C4 危险命令（如 `rm -rf /`）被拦截；
-  - C4b（P2）超长输出截断后保留尾部。
+  - C4b（P2）超长输出截断后保留尾部；
+  - C5（梯度测试）schema 描述含 Windows/cmd 与 heredoc 提示；系统提示（agent-loop L4b）含平台说明。
 
 ## list_dir（T1）
 - 接口：`list_dir(path: str = ".") -> str`

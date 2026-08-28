@@ -30,7 +30,10 @@ def build_system_prompt(workdir: str) -> str:
         f"{workdir}\n"
         "You complete coding tasks by reading files, editing code and running "
         "commands. Prefer minimal, correct changes. When the task is done, "
-        "answer with a short summary of what you changed."
+        "answer with a short summary of what you changed.\n"
+        "PLATFORM: the shell is Windows cmd.exe — heredocs (`<<`) and Unix "
+        "`find`/`ls` are NOT available; use `python -c \"...\"`, `dir`, or the "
+        "provided glob/grep tools."
     )
 
 

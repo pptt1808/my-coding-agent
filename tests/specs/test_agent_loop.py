@@ -78,6 +78,13 @@ def test_l4_system_prompt_mentions_workdir(workdir):
     assert str(workdir) in prompt
 
 
+def test_l4b_system_prompt_mentions_platform(workdir):
+    """Gradient-test fix: the model must know the shell is Windows cmd."""
+    prompt = build_system_prompt(str(workdir))
+    assert "Windows" in prompt
+    assert "heredoc" in prompt
+
+
 def test_l5_tool_error_does_not_crash_loop(workdir):
     fake = FakeLLM([
         LLMResult(text="", tool_calls=[_read_tool("missing.txt")]),

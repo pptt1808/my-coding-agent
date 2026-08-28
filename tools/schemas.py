@@ -42,7 +42,13 @@ BASH: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "bash",
-        "description": "Run a shell command in the working directory with a timeout. Returns combined stdout+stderr (capped).",
+        "description": (
+            "Run a shell command in the working directory with a timeout. Returns combined "
+            "stdout+stderr (capped, tail-first). "
+            "IMPORTANT: the shell is Windows cmd.exe — do NOT use heredocs (`<<`), Unix "
+            "`find`/`ls`/`grep`; use `python -c \"...\"` for inline checks, `dir` for listing, "
+            "and the provided glob/grep/read_file tools instead."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
