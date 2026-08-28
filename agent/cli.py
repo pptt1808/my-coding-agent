@@ -40,8 +40,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
     cfg = apply_workdir(Config.from_env(), args.workdir)
     from .loop import CodingAgent
 
-    answer = CodingAgent(cfg, model=args.model, tools=_parse_tools(args.tools)).run(args.task)
-    print(answer)
+    stream = cfg.stream and not args.no_stream
+    streamed: list[str] = []
+
+    def _on_delta(text: str) -> None:
+        streamed.append(text)
+        print(text, end="", flush=True)
+
+    answer = CodingAgent(cfg, model=args.model, tools=_parse_tools(args.tools)).run(
+        args.task, stream=stream, on_delta=_on_delta)
+    if streamed:
+        print()  # finish the line after streaming
+    else:
+        print(answer)
     return 0
 
 
@@ -49,8 +60,9 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     cfg = apply_workdir(Config.from_env(), args.workdir)
     from .repl import ReplSession
 
-    session = ReplSession(cfg, model=args.model, trace=args.trace, tools=_parse_tools(args.tools))
-    print(f"coding-agent chat — model={session._agent.model} workdir={cfg.workdir}  (type /help)")
+    session = ReplSession(cfg, model=args.model, trace=args.trace, tools=_parse_tools(args.tools),
+                          stream=cfg.stream and not args.no_stream)
+    print(f"coding-agent chat — model={session._agent.model} workdir={cfg.workdir}  (type / for commands)")
     for line in sys.stdin:
         for out in session.handle(line):
             print(out, flush=True)
@@ -68,12 +80,14 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--model", default=None, help="override the model tier (e.g. deepseek-v4-pro)")
     run.add_argument("--tools", default=None, help="comma-separated tool whitelist, e.g. read_file,edit_file")
     run.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
+    run.add_argument("--no-stream", action="store_true", help="disable token streaming output")
     run.set_defaults(func=_cmd_run)
     chat = sub.add_parser("chat", help="start an interactive session (slash commands: /help /compact /status ...)")
     chat.add_argument("--model", default=None, help="override the model tier")
     chat.add_argument("--trace", action="store_true", help="print each agent step")
     chat.add_argument("--tools", default=None, help="comma-separated tool whitelist, e.g. read_file,edit_file")
     chat.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
+    chat.add_argument("--no-stream", action="store_true", help="disable token streaming output")
     chat.set_defaults(func=_cmd_chat)
     args = parser.parse_args(argv)
     return args.func(args)

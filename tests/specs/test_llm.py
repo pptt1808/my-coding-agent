@@ -85,3 +85,39 @@ def test_ll4_passes_system_messages_and_tools():
     assert kwargs["messages"][1:] == [{"role": "user", "content": "task"}]
     assert kwargs["tools"] == tools
     assert kwargs["model"] == "gpt-4o-mini"
+
+
+# ---- streaming (R11 / specs/cli.md) ----
+
+def _chunk(content=None, tool_calls=None, usage=None):
+    delta = {}
+    if content is not None:
+        delta["content"] = content
+    if tool_calls is not None:
+        delta["tool_calls"] = tool_calls
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(**delta))],
+                           usage=usage)
+
+
+def test_st1_stream_deltas_and_tool_call_assembly():
+    tc1 = SimpleNamespace(index=0, id="call_9", type="function",
+                          function=SimpleNamespace(name="read_file", arguments='{"pat'))
+    tc2 = SimpleNamespace(index=0, id=None, type=None,
+                          function=SimpleNamespace(name=None, arguments='h": "a.py"}'))
+    stream = iter([
+        _chunk(content="hello "),
+        _chunk(content="world"),
+        _chunk(tool_calls=[tc1]),
+        _chunk(tool_calls=[tc2]),
+    ])
+    fake = FakeOpenAI("sk-test", "https://gateway.test/v1", stream)
+    client = LLMClient(Config(api_key="sk-test"), client=fake)
+
+    deltas: list[str] = []
+    result = client.stream_complete("sys", [{"role": "user", "content": "hi"}], tools=[], on_delta=deltas.append)
+    assert "".join(deltas) == "hello world"
+    assert result.text == "hello world"
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].id == "call_9"
+    assert result.tool_calls[0].name == "read_file"
+    assert result.tool_calls[0].arguments == {"path": "a.py"}

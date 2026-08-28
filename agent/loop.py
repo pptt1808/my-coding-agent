@@ -81,15 +81,21 @@ class CodingAgent:
         if self._trace:
             print(f"[trace] {msg}", flush=True)
 
-    def run(self, task: str) -> str:
-        """Run the agent on a task and return its final answer (L1)."""
-        answer, _ = self.run_turn([{"role": "user", "content": task}])
+    def run(self, task: str, stream: bool = False, on_delta: Any | None = None) -> str:
+        """Run the agent on a task and return its final answer (L1).
+
+        `stream=True` prints model tokens as they arrive (when the LLM client
+        supports streaming); the returned answer is still the full text.
+        """
+        answer, _ = self.run_turn([{"role": "user", "content": task}], stream=stream, on_delta=on_delta)
         return answer
 
-    def run_turn(self, messages: list[dict[str, Any]], extra_system: str = "") -> tuple[str, list[dict[str, Any]]]:
+    def run_turn(self, messages: list[dict[str, Any]], extra_system: str = "",
+                 stream: bool = False, on_delta: Any | None = None) -> tuple[str, list[dict[str, Any]]]:
         """Execute the loop starting from `messages` (already containing the new user turn).
 
         `extra_system` is appended to the system prompt (e.g. the REPL's task list).
+        `stream=True` + `on_delta` streams text tokens as they arrive.
 
         Returns (final answer, updated messages) so callers (e.g. the REPL) can
         continue the same conversation on the next turn.
@@ -112,7 +118,13 @@ class CodingAgent:
 
         while not terminator.should_stop(state, time.monotonic() - start):
             state.steps += 1
-            result = self._llm.complete(system_prompt, history, registry.tool_schemas(self._allowed_tools))
+            if stream and hasattr(self._llm, "stream_complete"):
+                result = self._llm.stream_complete(
+                    system_prompt, history, registry.tool_schemas(self._allowed_tools),
+                    on_delta=on_delta,
+                )
+            else:
+                result = self._llm.complete(system_prompt, history, registry.tool_schemas(self._allowed_tools))
             self.total_tokens += int(result.usage.get("total_tokens", 0))
             self.input_tokens += int(result.usage.get("prompt_tokens", 0))
             self.output_tokens += int(result.usage.get("completion_tokens", 0))

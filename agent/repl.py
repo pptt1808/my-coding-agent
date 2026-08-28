@@ -22,7 +22,7 @@ from .loop import CodingAgent
 from .session import Session, list_sessions, load_session, new_session_id, save_session
 from eval.judge import Judge
 
-HELP = """slash commands:
+HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /help            show this help
   /exit            quit the session
   /clear           reset conversation history
@@ -43,6 +43,9 @@ HELP = """slash commands:
   /permissions reset            restore the default blacklist
 Anything else is sent to the agent as a new turn."""
 
+COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
+            "save", "resume", "ls", "task", "review", "permissions"]
+
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
     "quality": "Is the code clear, idiomatic and free of dead code?",
@@ -55,7 +58,7 @@ class ReplSession:
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
                  trace: bool = False, tools: list[str] | None = None,
-                 judge: Any | None = None) -> None:
+                 judge: Any | None = None, stream: bool = True) -> None:
         self._config = config
         self._llm = llm
         self._judge = judge
@@ -63,12 +66,13 @@ class ReplSession:
         self._messages: list[dict[str, Any]] = []
         self._todos: list[str] = []
         self._snapshot = snapshot_dir(self._config.workdir)  # for /review
+        self._stream = stream
         self.running = True
 
     # ------------------------------------------------------------------ input
 
     def handle(self, line: str) -> list[str]:
-        """Process one input line; returns lines to print (R1/R3-R10)."""
+        """Process one input line; returns lines to print (R1/R3-R12)."""
         line = line.strip()
         if not line:
             return []
@@ -84,6 +88,20 @@ class ReplSession:
 
     def _turn(self, line: str) -> list[str]:
         self._messages.append({"role": "user", "content": line})
+        if self._stream:
+            streamed: list[str] = []
+
+            def _on_delta(text: str) -> None:
+                streamed.append(text)
+                print(text, end="", flush=True)
+
+            answer, self._messages = self._agent.run_turn(
+                self._messages, extra_system=self._task_block(), stream=True, on_delta=_on_delta,
+            )
+            if streamed:
+                print()  # newline after the streamed answer
+                return []  # already printed live (R11: no duplicate)
+            return [answer]
         answer, self._messages = self._agent.run_turn(self._messages, extra_system=self._task_block())
         return [answer]
 
@@ -92,6 +110,21 @@ class ReplSession:
     def _slash(self, line: str) -> list[str]:
         cmd, _, arg = line.partition(" ")
         cmd = cmd.lower()
+
+        # "/" alone -> command menu (R12)
+        if cmd == "/":
+            return [HELP]
+        # prefix expansion (R12): /comp -> /compact when unique
+        name = cmd[1:]
+        if len(cmd) > 1 and name not in COMMANDS:
+            matches = [c for c in COMMANDS if c.startswith(name)]
+            if len(matches) == 1:
+                expanded = "/" + matches[0] + (" " + arg if arg else "")
+                return self._slash(expanded)
+            if len(matches) > 1:
+                return [f"ambiguous prefix {cmd}: {', '.join('/' + m for m in matches)}",
+                        "type / for the full list."]
+
         if cmd == "/help":
             return [HELP]
         if cmd == "/exit":
@@ -158,7 +191,7 @@ class ReplSession:
             return self._review()
         if cmd == "/permissions":
             return self._permissions(arg)
-        return [f"unknown command: {cmd}. Type /help for usage."]
+        return [f"unknown command: {cmd}. Available: {', '.join('/' + c for c in COMMANDS)}"]
 
     # ------------------------------------------------------------- P2: review
 

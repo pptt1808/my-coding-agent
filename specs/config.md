@@ -17,7 +17,8 @@
 - C5 未设 `EVAL_MODEL` 时，评测模型回退到 `MODEL`（`eval_model_name == model`）；
 - C6 设置 `EVAL_MODEL` 时，评测模型独立分层（`eval_model_name == EVAL_MODEL`）；
 - C7（工作区）未显式指定时，`.env` 按 `<cwd>/.env` → `<包根>/.env` → `~/.coding-agent/.env` 顺序查找（`CODING_AGENT_ENV` 显式指定则只用它）；
-- C8 `--workdir` 可显式覆盖工作区（`apply_workdir`），未指定时保持原配置。
+- C8 `--workdir` 可显式覆盖工作区（`apply_workdir`），未指定时保持原配置；
+- C9 流式输出默认开启（`STREAM=1`，`--no-stream` 可关）。
 
 模型分层：交互/开发走 `MODEL`（便宜档，如 deepseek-v4-flash），评测 harness 走 `EVAL_MODEL`
 （强档，如 deepseek-v4-pro）；`LLMClient(model=...)` 可按层选择，CLI `run --model` 可临时覆盖。

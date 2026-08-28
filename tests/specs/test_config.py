@@ -96,3 +96,11 @@ def test_c8_workdir_override(tmp_path):
     assert apply_workdir(cfg, None) is cfg  # no override -> unchanged
     new_cfg = apply_workdir(cfg, str(tmp_path))
     assert new_cfg.workdir == tmp_path.resolve()
+
+
+def test_c9_stream_default_on(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.delenv("STREAM", raising=False)
+    assert Config.from_env().stream is True
+    monkeypatch.setenv("STREAM", "0")
+    assert Config.from_env().stream is False

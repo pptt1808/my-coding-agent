@@ -106,3 +106,43 @@ def test_r10_cost_shows_token_split(session):
     sess.handle("work")
     text = "\n".join(sess.handle("/cost"))
     assert "input" in text and "output" in text and "total" in text
+
+
+def test_r11_streaming_prints_deltas_and_no_duplicate(capsys, tmp_path):
+    class StreamingFake:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="plain", usage={"total_tokens": 1})
+
+        def stream_complete(self, _sys, _messages, _tools=None, on_delta=None):
+            if on_delta:
+                on_delta("hel")
+                on_delta("lo")
+            return LLMResult(text="hello", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=StreamingFake(), stream=True)
+    out = sess.handle("hi")
+    assert out == []  # streamed: no duplicate final print
+    captured = capsys.readouterr().out
+    assert captured.strip() == "hello"  # deltas printed live + trailing newline
+
+
+def test_r12_slash_alone_shows_menu(session):
+    sess, _ = session
+    lines = sess.handle("/")
+    text = "\n".join(lines)
+    assert "/compact" in text and "/status" in text and "/task" in text
+
+
+def test_r12b_prefix_expansion(session):
+    sess, _ = session
+    lines = sess.handle("/sta")
+    text = "\n".join(lines)
+    assert "model=" in text  # expanded to /status
+
+
+def test_r12c_unknown_prefix_lists_commands(session):
+    sess, _ = session
+    lines = sess.handle("/zzz")
+    text = "\n".join(lines)
+    assert "unknown" in text
+    assert "/compact" in text  # available commands listed

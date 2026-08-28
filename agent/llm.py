@@ -76,6 +76,69 @@ class LLMClient:
         usage: dict[str, int] = _usage_dict(resp.usage)
         return LLMResult(text=message.content or "", tool_calls=tool_calls, usage=usage)
 
+    def stream_complete(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        on_delta: Any | None = None,
+    ) -> LLMResult:
+        """Streaming variant of `complete` (R11/C9).
+
+        Text tokens are delivered to `on_delta` as they arrive; tool-call
+        arguments (which arrive in fragments) are accumulated by index and
+        assembled into `ToolCall`s. Usage is captured if the gateway sends it
+        on the final chunk (otherwise {}).
+        """
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": [{"role": "system", "content": system_prompt}, *messages],
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        try:
+            stream = self._client.chat.completions.create(**kwargs, stream_options={"include_usage": True})
+        except TypeError:
+            stream = self._client.chat.completions.create(**kwargs)
+
+        text_parts: list[str] = []
+        tool_accum: dict[int, dict[str, Any]] = {}
+        usage: dict[str, int] = {}
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = _usage_dict(chunk.usage)
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if getattr(delta, "content", None):
+                text_parts.append(delta.content)
+                if on_delta:
+                    on_delta(delta.content)
+            for tc in getattr(delta, "tool_calls", None) or []:
+                entry = tool_accum.setdefault(tc.index, {"id": "", "name": "", "args": []})
+                if getattr(tc, "id", None):
+                    entry["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn:
+                    if getattr(fn, "name", None):
+                        entry["name"] = fn.name
+                    if getattr(fn, "arguments", None):
+                        entry["args"].append(fn.arguments)
+
+        tool_calls: list[ToolCall] = []
+        for index in sorted(tool_accum):
+            entry = tool_accum[index]
+            try:
+                args = json.loads("".join(entry["args"]) or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            if not isinstance(args, dict):
+                args = {}
+            tool_calls.append(ToolCall(id=entry["id"] or f"call_{index}", name=entry["name"], arguments=args))
+        return LLMResult(text="".join(text_parts), tool_calls=tool_calls, usage=usage)
+
 
 def _usage_dict(usage: Any) -> dict[str, int]:
     """Normalize usage into a plain dict (real pydantic models, dicts, or test fakes)."""
