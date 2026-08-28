@@ -22,6 +22,56 @@ def apply_workdir(cfg: Config, workdir: str | None) -> Config:
     return replace(cfg, workdir=Path(workdir).resolve())
 
 
+def read_interactive_line(prompt: str, on_slash, _read_char=None) -> str | None:
+    """Interactive line editor (Windows TTY).
+
+    Typing '/' as the FIRST character opens the command menu immediately (no
+    Enter required) — like OpenCode/Claude Code. Subsequent typed characters
+    complete the command, and Enter sends it (the leading '/' is re-added).
+    Falls back to plain `input()` on non-Windows / non-TTY stdin.
+    Returns the line, or None on EOF.
+    """
+    if os.name != "nt" or not sys.stdin.isatty():
+        try:
+            return input(prompt)
+        except EOFError:
+            return None
+
+    import msvcrt as _msvcrt
+
+    reader = _read_char or _msvcrt.getwch
+    chars: list[str] = []
+    slash_seen = False
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    while True:
+        ch = reader()
+        if ch in ("\r", "\n"):
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return ("/" if slash_seen else "") + "".join(chars)
+        if ch == "\x03":  # Ctrl+C
+            raise KeyboardInterrupt
+        if ch in ("\x08", "\x7f"):  # Backspace
+            if chars:
+                chars.pop()
+                sys.stdout.write("\b \b")
+                sys.stdout.flush()
+            continue
+        if not chars and not slash_seen and ch == "/":
+            slash_seen = True
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            on_slash()  # print the command menu immediately
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            continue
+        chars.append(ch)
+        sys.stdout.write(ch)
+        sys.stdout.flush()
+    return None
+
+
 def _cmd_config(_args: argparse.Namespace) -> int:
     cfg = Config.from_env()
     print(f"model={cfg.model}  base_url={cfg.base_url}  workdir={cfg.workdir}")
@@ -63,7 +113,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _cmd_chat(args: argparse.Namespace) -> int:
     cfg = apply_workdir(Config.from_env(), args.workdir)
-    from .repl import C_PROMPT, C_RESET, ReplSession
+    from .repl import C_PROMPT, C_RESET, HELP, ReplSession
 
     if os.name == "nt":
         os.system("")  # enable ANSI/VT output in Windows cmd/terminal
@@ -80,9 +130,9 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     while session.running:
         try:
             if sys.stdin.isatty():
-                try:
-                    line = input(f"{C_PROMPT}❯{C_RESET} ")
-                except EOFError:
+                # Windows interactive: typing '/' as the first char opens the menu
+                line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=lambda: print(HELP))
+                if line is None:
                     break
             else:
                 line = sys.stdin.readline()
