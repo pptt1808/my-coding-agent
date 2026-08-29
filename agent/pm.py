@@ -31,20 +31,21 @@ ARTIFACTS = {
     "story": "DEMO_SCRIPT.md",
     "pitch": "PITCH.md",
 }
-STEPS = ["vision", "story", "mvp", "polish", "pitch"]
+STEPS = ["vision", "story", "mvp", "polish", "pitch", "validate"]
 
 PM_PERSONA = (
     "You are a PRODUCT-MANAGER-minded demo builder working in: {workdir}.\n"
-    "You turn ideas into quick, runnable demos that TELL A STORY — not production "
-    "code. You think like a PM:\n"
-    "  - Clarify the AUDIENCE, what ONE thing it must prove, and the demo "
-    "    WOW-moment before building (JTBD / Double-diamond).\n"
-    "  - Build the SMALLEST runnable thing (Lean MVP) and FAKE/STUB anything "
-    "    external (backends, hard data) instead of engineering it.\n"
-    "  - No over-engineering: no premature architecture, CI, tests-for-tests, "
-    "    or polish on non-demo paths.\n"
-    "  - Time-box: prefer a crisp happy-path demo over breadth.\n"
-    "  - Every step must leave something runnable or showable.\n"
+    "You run a REAL product process with the user, in order — never skip ahead:\n"
+    "  1. CLARIFY: ask the user about their REAL goal, ONE key product question at a\n"
+    "     time (audience / what to prove / demo wow-moment / what to cut). Do NOT build.\n"
+    "  2. SPEC: once clarified, write demo/DEMO_SPEC.md and ASK THE USER TO CONFIRM it\n"
+    "     before any code. Do NOT write demo code until the user confirms.\n"
+    "  3. MVP: only after confirmation, build the SMALLEST runnable thing (Lean MVP),\n"
+    "     FAKING/stubbing anything external. Time-boxed.\n"
+    "  4. VALIDATE: run it for the user, get real feedback, iterate.\n"
+    "  5. STORY & PITCH: only after the demo works, produce the 30s narrative + pitch.\n"
+    "Guardrails: no over-engineering (no architecture/CI/tests-for-tests); external deps\n"
+    "stubbed; every step leaves something runnable/showable; clarify before building.\n"
     "PLATFORM: Windows cmd; use python -c / dir / the glob/grep tools.\n"
 )
 
@@ -58,10 +59,10 @@ STEP_PROMPTS = {
         "Key claim, Demo moment, Acceptance criteria. Keep it crisp."
     ),
     "story": (
-        "DEMO STORY: Distill a 30-second narrative (problem -> solution -> payoff) "
-        "from the vision + the user's goal. Write it to "
-        f"{DEMO_DIR}/{ARTIFACTS['story']} as talking points a human would say out "
-        "loud while showing the demo."
+        "DEMO STORY: Write the 30-second narrative (problem -> solution -> payoff) as "
+        "clear talking points. Reply with ONLY the markdown content for "
+        f"{DEMO_DIR}/{ARTIFACTS['story']} — the entire reply IS the file. Do NOT include "
+        "any preamble, file listings, or 'all done / no action needed' notes."
     ),
     "mvp": (
         "BUILD MVP: In this workspace, scaffold the SMALLEST runnable demo that "
@@ -74,11 +75,35 @@ STEP_PROMPTS = {
         "that breaks the demo moment. Do not add features beyond the story."
     ),
     "pitch": (
-        "PITCH: Write a short pitch to " f"{DEMO_DIR}/{ARTIFACTS['pitch']}" ": the "
-        "value proposition in one paragraph, the demo's wow moment, limitations, "
-        "and 1-2 next steps. Address the audience from the vision."
+        "PITCH: Write a short pitch (value proposition, demo wow moment, limitations, "
+        "1-2 next steps) addressing the audience from the vision. Reply with ONLY the "
+        f"markdown content for {DEMO_DIR}/{ARTIFACTS['pitch']} — the entire reply IS "
+        "the file. No preamble or 'all set' notes."
+    ),
+    "validate": (
+        "VALIDATE: Run the demo (e.g. `python <demo>`, or open the page) and show the "
+        "user the result. Ask ONE question about what to improve. Do not add scope "
+        "unprompted."
     ),
 }
+
+
+_META_MARKERS = (
+    "all set", "no action needed", "nothing new", "no worries", "noted",
+    "just say the word", "waiting", "so where", "no problem", "all good",
+)
+
+
+def _looks_like_meta(text: str) -> bool:
+    """True if a reply is conversational meta, not artifact content."""
+    low = (text or "").lower()
+    stripped = (text or "").strip()
+    if any(m in low for m in _META_MARKERS):
+        return True
+    # a real artifact is markdown-ish; a short conversational reply is not
+    if len(stripped) < 20 and not stripped.startswith(("#", "-", ">", "|", "*")):
+        return True
+    return False
 
 
 @dataclass
@@ -112,14 +137,29 @@ class PmSession:
     def run_step(self, step: str, task: str) -> list[str]:
         """Run one PM step with the persona + step-specific instruction; persist its artifact."""
         if step not in STEPS:
-            return [f"unknown pm step: {step} (use /vision /story /mvp /polish /pitch)"]
+            return [f"unknown pm step: {step} (use /vision /story /mvp /polish /pitch /validate)"]
         self.demo_dir()  # ensure the PM workspace exists for every step
+        # HARD GATE: MVP requires an (already-clarified) spec — never build before alignment.
+        if step == "mvp" and not self._artifact("vision").exists():
+            return ["[pm:mvp] gate refused: run /vision first to align the spec, then I'll build "
+                    "the smallest demo. We won't skip product clarity."]
+        if step in ("story", "pitch") and not self._artifact("vision").exists():
+            return [f"[pm:{step}] gate refused: no spec yet — run /vision to define the demo first."]
         # include the persona + step instruction + the accumulated product context
         extra = STEP_PROMPTS[step]
         self._messages.append({"role": "user", "content": task})
         answer, self._messages = self._agent.run_turn(self._messages, extra_system=extra)
         # persist the artifact (vision/story/pitch write text; mvp/polish write code + a note)
         if step in ARTIFACTS:
+            # harden against the model replying with meta instead of the artifact body
+            if _looks_like_meta(answer):
+                self._messages.append({"role": "user", "content":
+                    f"Reply with ONLY the markdown content for {ARTIFACTS[step]}. "
+                    "No preamble, no 'done / all set / nothing new' notes. The entire "
+                    "reply IS the file."})
+                answer2, self._messages = self._agent.run_turn(self._messages)
+                if not _looks_like_meta(answer2):
+                    answer = answer2
             self._artifact(step).write_text(answer, encoding="utf-8")
-            return [f"[pm:{step}] wrote {self._artifact(step).name} ({len(answer)} chars)", answer[:800]]
+            return [f"[pm:{step}] wrote {self._artifact(step).name} ({len(answer)} chars)", answer[:1000]]
         return [f"[pm:{step}] {answer[:800]}"]

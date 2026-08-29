@@ -156,14 +156,15 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     return 0
 
 
-PM_HELP = """pm demo mode — PM-minded quick demo builder (production of a story, not code):
-  /vision   ask product questions -> write demo/DEMO_SPEC.md
+PM_HELP = """pm demo mode — PM-minded demo builder (product process, not just code):
+  /vision   clarify + write demo/DEMO_SPEC.md (must confirm before building)
   /story    write a 30s narrative -> demo/DEMO_SCRIPT.md
-  /mvp      scaffold the smallest runnable demo (fake-first) in demo/
+  /mvp      build the SMALLEST runnable demo (gated: needs a confirmed spec)
+  /validate run it for you and get real feedback (the iteration loop)
   /polish   make the demo happy path crisp
   /pitch    write demo/PITCH.md (value prop / next steps)
   /exit     quit
-Anything else is a normal turn in the PM persona (describe the idea, answer questions)."""
+Anything else is a normal turn (describe the idea / answer the agent's questions)."""
 
 
 def _cmd_pm(args: argparse.Namespace) -> int:
@@ -201,7 +202,7 @@ def _cmd_pm(args: argparse.Namespace) -> int:
         if line == "/help":
             print(PM_HELP)
             continue
-        if line.startswith("/") and line[1:] in ("vision", "story", "mvp", "polish", "pitch"):
+        if line.startswith("/") and line[1:] in ("vision", "story", "mvp", "polish", "pitch", "validate"):
             step = line[1:]
             try:
                 for out in session.run_step(step, ""):
