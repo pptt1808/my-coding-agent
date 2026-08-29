@@ -33,7 +33,10 @@ def build_system_prompt(workdir: str) -> str:
         "answer with a short summary of what you changed.\n"
         "PLATFORM: the shell is Windows cmd.exe — heredocs (`<<`) and Unix "
         "`find`/`ls` are NOT available; use `python -c \"...\"`, `dir`, or the "
-        "provided glob/grep tools."
+        "provided glob/grep tools.\n"
+        "WORKFLOW: read the full signature and docstring before implementing; "
+        "if the spec is ambiguous, match the docstring example exactly and add "
+        "your own edge-case checks — avoid speculative verbose probing."
     )
 
 
@@ -134,6 +137,11 @@ class CodingAgent:
             self.total_tokens += int(result.usage.get("total_tokens", 0))
             self.input_tokens += int(result.usage.get("prompt_tokens", 0))
             self.output_tokens += int(result.usage.get("completion_tokens", 0))
+            # Token budget cap (AgentBudget-style): stop a runaway loop before it
+            # balloons the session cost/context.
+            if self._config.max_total_tokens > 0 and self.total_tokens >= self._config.max_total_tokens:
+                self._log(f"token budget exceeded ({self.total_tokens} >= {self._config.max_total_tokens})")
+                break
             self.trajectory.append({
                 "step": state.steps,
                 "text": result.text[:300],

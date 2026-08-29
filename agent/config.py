@@ -54,7 +54,12 @@ class Config:
     max_consecutive_failures: int = 3
     no_progress_limit: int = 3
     max_elapsed_s: float = 600.0
-    auto_compact_at_tokens: int = 0  # >0 enables auto-compaction above this history size
+    # Auto-compaction ON by default (Claude Code's auto-compact window): when the
+    # conversation's estimated history exceeds this, summarize it. 0 disables.
+    auto_compact_at_tokens: int = 60000
+    # Token budget cap (AgentBudget-style): stop the loop once the session exceeds
+    # this many tokens. 0 disables.
+    max_total_tokens: int = 0
     stream: bool = True  # stream model tokens to the terminal (R11/C9)
     # Multi-agent: cheap read-only exploration, gated (default OFF)
     auto_explore: str = "off"  # off | auto | always
@@ -105,7 +110,8 @@ class Config:
             max_consecutive_failures=int(os.environ.get("MAX_CONSECUTIVE_FAILURES", "3")),
             no_progress_limit=int(os.environ.get("NO_PROGRESS_LIMIT", "3")),
             max_elapsed_s=float(os.environ.get("MAX_ELAPSED_S", "600")),
-            auto_compact_at_tokens=int(os.environ.get("AUTO_COMPACT_AT_TOKENS", "0")),
+            auto_compact_at_tokens=int(os.environ.get("AUTO_COMPACT_AT_TOKENS", "60000")),
+            max_total_tokens=int(os.environ.get("MAX_TOTAL_TOKENS", "0")),
             stream=os.environ.get("STREAM", "1") != "0",
             auto_explore=os.environ.get("AUTO_EXPLORE", "off"),
             explore_min_files=int(os.environ.get("EXPLORE_MIN_FILES", "200")),

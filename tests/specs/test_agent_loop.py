@@ -116,3 +116,22 @@ def test_l7_identical_repeated_call_is_no_progress(workdir):
     agent = _agent(workdir, fake, no_progress_limit=2, max_steps=10)
     out = agent.run("repeat the same call")
     assert "Error" in out  # stopped by no-progress before finishing
+
+
+def test_l8_token_budget_stops_runaway_loop(workdir):
+    """A token budget caps a runaway loop (AgentBudget-style guardrail)."""
+    class BudgetLLM:
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, _sys, _messages, _tools=None):
+            self.calls += 1
+            return LLMResult(text="", tool_calls=[_read_tool("hello.txt")],
+                             usage={"total_tokens": 50})
+
+    fake = BudgetLLM()
+    agent = _agent(workdir, fake, max_total_tokens=60, max_steps=50)
+    out = agent.run("work")
+    assert "Error" in out  # stopped by the token budget, not max_steps
+    assert agent.total_tokens >= 60
+    assert fake.calls < 50  # did not run to the end

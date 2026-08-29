@@ -104,3 +104,21 @@ def test_c9_stream_default_on(monkeypatch):
     assert Config.from_env().stream is True
     monkeypatch.setenv("STREAM", "0")
     assert Config.from_env().stream is False
+
+
+def test_c10_auto_compact_default_on_window(monkeypatch):
+    """Auto-compaction is ON by default (Claude Code auto-compact window), not 0."""
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.delenv("AUTO_COMPACT_AT_TOKENS", raising=False)
+    cfg = Config.from_env()
+    assert cfg.auto_compact_at_tokens > 0
+    monkeypatch.setenv("AUTO_COMPACT_AT_TOKENS", "0")
+    assert Config.from_env().auto_compact_at_tokens == 0
+
+
+def test_c11_max_total_tokens_env(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.delenv("MAX_TOTAL_TOKENS", raising=False)
+    assert Config.from_env().max_total_tokens == 0  # budget off by default
+    monkeypatch.setenv("MAX_TOTAL_TOKENS", "120000")
+    assert Config.from_env().max_total_tokens == 120000
