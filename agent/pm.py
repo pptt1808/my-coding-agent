@@ -91,19 +91,29 @@ STEP_PROMPTS = {
 _META_MARKERS = (
     "all set", "no action needed", "nothing new", "no worries", "noted",
     "just say the word", "waiting", "so where", "no problem", "all good",
+    "where things stand", "what's left", "since your", "just reply", "the demo is done",
+    "still green", "pick one", "which one?",
 )
 
 
+def _first_content_line(text: str) -> str:
+    for line in (text or "").splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
 def _looks_like_meta(text: str) -> bool:
-    """True if a reply is conversational meta, not artifact content."""
+    """True if a reply is conversational meta, not a markdown artifact document."""
     low = (text or "").lower()
     stripped = (text or "").strip()
     if any(m in low for m in _META_MARKERS):
         return True
-    # a real artifact is markdown-ish; a short conversational reply is not
-    if len(stripped) < 20 and not stripped.startswith(("#", "-", ">", "|", "*")):
+    # a real artifact is a markdown document that opens with a # heading
+    first = _first_content_line(text)
+    if not first.startswith("#"):
         return True
-    return False
+    return len(stripped) < 20
 
 
 @dataclass
@@ -155,8 +165,9 @@ class PmSession:
             if _looks_like_meta(answer):
                 self._messages.append({"role": "user", "content":
                     f"Reply with ONLY the markdown content for {ARTIFACTS[step]}. "
-                    "No preamble, no 'done / all set / nothing new' notes. The entire "
-                    "reply IS the file."})
+                    "Start the reply with a markdown heading, e.g. '# FILE-NAME'. "
+                    "No preamble, no 'done / all set / where things stand' notes. "
+                    "The entire reply IS the file."})
                 answer2, self._messages = self._agent.run_turn(self._messages)
                 if not _looks_like_meta(answer2):
                     answer = answer2
