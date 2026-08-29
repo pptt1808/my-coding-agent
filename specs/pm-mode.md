@@ -10,7 +10,10 @@
 - **MVP**：`/mvp` 在 workspace 支架**最小可运行** demo（外部依赖打桩/fake，不过度工程），并把它跑起来；
 - **Validate**：`/validate` 运行 demo 给用户看、问一条改进意见（真反馈循环）；
 - **Pitch**：`/pitch` 写 `demo/PITCH.md`（价值主张/爽点/局限/下一步）；
-- **产物抗污染**：`vision/story/pitch` 步骤提示词要求"只输出产物 markdown 正文、零前言"；若回复被判为**元信息**（`_looks_like_meta`：含 "all set / nothing new" 等，或极短且非 markdown），**强制重写**一次，避免把对话式话术写进产物；
+- **产物抗污染**：`vision/story/pitch` 步骤提示词要求"只输出产物 markdown 正文、零前言"；写入前：
+  1. 若回复**内嵌了 markdown 文档块**（`# 标题` 之后），提取该块；
+  2. 否则若判为**元信息**（`_looks_like_meta`：不以 `#` 标题开头或含状态词），**强制重写最多 2 次**；
+  3. 仍失败 → **写入但明确警告"请手动确认"**（`⚠`），产物质量由用户把关；
 - **护栏**：time-box、禁止过度工程（不上架构/CI/为测而测）、外部依赖打桩、每步可运行可展示。
 
 验收标准（`tests/specs/test_pm_mode.py`）：
@@ -20,4 +23,6 @@
 - P5 `/mvp` 无 spec 时**拒绝构建**（gate）；spec 存在后构建；
 - P6 未知 step 容错、`turn` 走 PM persona；
 - P7 元信息回复 → 强制重写 → 产物为干净正文；
-- P8 干净回复 → 不额外重写。
+- P8 干净回复 → 不额外重写；
+- P9 内嵌 markdown 文档的回复 → 提取该块；
+- P10 重写后仍为 meta → 写入但**明确警告**用户手动确认。

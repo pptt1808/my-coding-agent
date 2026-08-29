@@ -103,6 +103,15 @@ def _first_content_line(text: str) -> str:
     return ""
 
 
+def _extract_markdown_doc(text: str) -> str | None:
+    """If a reply embeds a markdown document (a '# heading' block), return that block."""
+    lines = (text or "").splitlines()
+    start = next((i for i, l in enumerate(lines) if l.strip().startswith("# ")), None)
+    if start is None:
+        return None
+    return "\n".join(lines[start:]).strip()
+
+
 def _looks_like_meta(text: str) -> bool:
     """True if a reply is conversational meta, not a markdown artifact document."""
     low = (text or "").lower()
@@ -161,16 +170,35 @@ class PmSession:
         answer, self._messages = self._agent.run_turn(self._messages, extra_system=extra)
         # persist the artifact (vision/story/pitch write text; mvp/polish write code + a note)
         if step in ARTIFACTS:
-            # harden against the model replying with meta instead of the artifact body
-            if _looks_like_meta(answer):
+            return self._write_artifact(step, answer)
+        return [f"[pm:{step}] {answer[:800]}"]
+
+    def _write_artifact(self, step: str, answer: str) -> list[str]:
+        """Persist a clean artifact; warn + let the user confirm if the model keeps replying with meta."""
+        path = self._artifact(step)
+        # 1) a reply might EMBED the markdown doc (chat preamble + "# DOC..." block) — use the block
+        doc = _extract_markdown_doc(answer)
+        if doc and not _looks_like_meta(doc):
+            answer = doc
+        # 2) if still meta, force up to 2 sharp rewrites
+        if _looks_like_meta(answer):
+            for _ in range(2):
                 self._messages.append({"role": "user", "content":
                     f"Reply with ONLY the markdown content for {ARTIFACTS[step]}. "
-                    "Start the reply with a markdown heading, e.g. '# FILE-NAME'. "
-                    "No preamble, no 'done / all set / where things stand' notes. "
-                    "The entire reply IS the file."})
+                    f"Start with a heading like '# {ARTIFACTS[step]}'. No preamble, no "
+                    "'done / all set / where things stand' notes. The entire reply IS the file."})
                 answer2, self._messages = self._agent.run_turn(self._messages)
+                doc2 = _extract_markdown_doc(answer2)
+                if doc2 and not _looks_like_meta(doc2):
+                    answer = doc2
+                    break
                 if not _looks_like_meta(answer2):
                     answer = answer2
-            self._artifact(step).write_text(answer, encoding="utf-8")
-            return [f"[pm:{step}] wrote {self._artifact(step).name} ({len(answer)} chars)", answer[:1000]]
-        return [f"[pm:{step}] {answer[:800]}"]
+                    break
+        # 3) write it; if we couldn't get clean content, FLAG it so the user confirms manually
+        path.write_text(answer, encoding="utf-8")
+        if _looks_like_meta(answer):
+            return [f"[pm:{step}] ⚠ wrote {path.name} ({len(answer)} chars) — the model kept "
+                    f"replying with meta, so please review {path.name} manually or re-run the step.",
+                    answer[:400]]
+        return [f"[pm:{step}] wrote {path.name} ({len(answer)} chars)", answer[:1000]]

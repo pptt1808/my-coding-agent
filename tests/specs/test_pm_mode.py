@@ -107,3 +107,32 @@ def test_p8_clean_reply_no_rewrite(tmp_path):
     sess.run_step("vision", "")
     sess.run_step("pitch", "")
     assert llm.calls == 2  # one call per step, no rewrite for clean replies
+
+
+def test_p9_embedded_markdown_doc_is_extracted(tmp_path):
+    """A chat reply that CONTAINS a markdown doc block is extracted (not treated as meta)."""
+    class WrapLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="Here's the doc for you:\n\n# PITCH.md\n## Value prop\nGood.", usage={"total_tokens": 1})
+
+    sess = PmSession.create(Config(api_key="x", workdir=tmp_path), llm=WrapLLM())
+    sess.run_step("vision", "")  # gated: needs spec first
+    out = sess.run_step("pitch", "")
+    content = (tmp_path / "demo" / ARTIFACTS["pitch"]).read_text(encoding="utf-8")
+    assert content.startswith("# PITCH.md")  # extracted doc, preamble dropped
+    assert any("value prop" in line.lower() for line in out)
+
+
+def test_p10_still_meta_after_rewrite_warns_user(tmp_path):
+    """If the model keeps replying with meta, we write but FLAG it for manual review."""
+    class AlwaysMetaLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="Still green — all done, no action needed. 👍", usage={"total_tokens": 1})
+
+    sess = PmSession.create(Config(api_key="x", workdir=tmp_path), llm=AlwaysMetaLLM())
+    sess.run_step("vision", "")  # vision also meta, but gate only checks existence
+    out = sess.run_step("pitch", "")
+    text = "\n".join(out)
+    assert "review" in text.lower() or "manually" in text.lower() or "⚠" in text  # explicit warn
+    content = (tmp_path / "demo" / ARTIFACTS["pitch"]).read_text(encoding="utf-8")
+    assert content  # still written so the file exists for the user to review
