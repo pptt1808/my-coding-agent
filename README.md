@@ -31,13 +31,14 @@ coding-agent config         # print resolved configuration
 coding-agent run "fix the bug in src/util.py"          # one-shot (dev tier MODEL)
 coding-agent run "..." --model deepseek-v4-pro         # override tier
 coding-agent chat            # interactive REPL (streaming, chat-bubble input, type "/" for the command menu)
+coding-agent pm              # product-manager demo mode (vibe-coding demos: /vision /story /mvp /polish /pitch)
 python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs .env key)
 coding-agent run "..." --explore   # force a cheap read-only explore subagent first (gated)
 ```
 
 ## Tests
 ```bash
-pytest                      # 148 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/multi-agent/cli/...)
+pytest                      # 162 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/multi-agent/pm-mode/cli/...)
 ```
 
 ## Evaluation task set (difficulty gradient)
