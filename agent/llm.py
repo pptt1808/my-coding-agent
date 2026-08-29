@@ -7,12 +7,29 @@ via `base_url`, so OpenAI / DeepSeek / Claude-gateway / local models all work.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAI, RateLimitError
 
 from .config import Config
+
+_RETRYABLE = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
+_MAX_RETRIES = 3
+
+
+def _create_with_retry(client: Any, **kwargs: Any) -> Any:
+    """Call the chat completions endpoint with retries on transient network errors."""
+    last_err: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except _RETRYABLE as exc:
+            last_err = exc
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(1.5 * (attempt + 1))
+    raise last_err  # type: ignore[misc]
 
 
 @dataclass
@@ -60,7 +77,7 @@ class LLMClient:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        resp = self._client.chat.completions.create(**kwargs)
+        resp = _create_with_retry(self._client, **kwargs)
         message = resp.choices[0].message
 
         tool_calls: list[ToolCall] = []
@@ -99,9 +116,9 @@ class LLMClient:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
         try:
-            stream = self._client.chat.completions.create(**kwargs, stream_options={"include_usage": True})
+            stream = _create_with_retry(self._client, **kwargs, stream_options={"include_usage": True})
         except TypeError:
-            stream = self._client.chat.completions.create(**kwargs)
+            stream = _create_with_retry(self._client, **kwargs)
 
         text_parts: list[str] = []
         tool_accum: dict[int, dict[str, Any]] = {}
