@@ -7,9 +7,9 @@ https://github.com/pptt1808/my-coding-agent
 1. Python 3.11+，pip install -e ".[dev]"
 2. cp .env.example .env，填入 API_KEY、BASE_URL、MODEL
 3. 交互式：coding-agent chat（流式、气泡输入、输入 / 出菜单）
-   命令：/help /clear /compact /status /cost /model /task /save /resume /review /undo /redo /explore /plan /codemap /permissions
+   命令：/help /clear /compact /status /cost /model /task /save /resume /review /undo /redo /explore /plan /codemap /permissions /skills /skill /pm
 4. 一次性：coding-agent run "修复 src/util.py 的 bug"；多 agent：--explore
-5. PM 演示模式：coding-agent pm（/vision /story /mvp /validate /polish /pitch）
+5. PM 演示模式：chat 里输入 /pm 激活（/vision /story /mvp /validate /polish /pitch，同一 agent）
 6. 自动评测：python -m eval tasks；BigCodeBench：python tools/run_bigcodebench.py --limit 30
 
 【特色功能】
