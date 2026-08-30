@@ -119,6 +119,15 @@ class CodingAgent:
         system_prompt = self._system_prompt_override or build_system_prompt(str(self._workdir))
         if extra_system:
             system_prompt += "\n\n" + extra_system
+        # Aider-style repo map: give the model a compact codebase overview (cached).
+        if self._config.code_map:
+            try:
+                from .repomap import code_map
+                cmap = code_map(self._workdir, max_chars=self._config.code_map_chars)
+                if cmap.strip():
+                    system_prompt += "\n\nCODE MAP (repo structure — use it to locate code):\n" + cmap
+            except Exception:
+                pass
         terminator = Terminator(self._config)
         state = LoopState()
         last_tool: str | None = None

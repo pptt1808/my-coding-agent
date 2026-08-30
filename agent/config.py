@@ -61,6 +61,8 @@ class Config:
     # this many tokens. 0 disables.
     max_total_tokens: int = 0
     stream: bool = True  # stream model tokens to the terminal (R11/C9)
+    code_map: bool = True  # inject an Aider-style repo map into agent context
+    code_map_chars: int = 4000
     # Multi-agent: cheap read-only exploration, gated (default OFF)
     auto_explore: str = "off"  # off | auto | always
     explore_min_files: int = 200
@@ -113,6 +115,8 @@ class Config:
             auto_compact_at_tokens=int(os.environ.get("AUTO_COMPACT_AT_TOKENS", "60000")),
             max_total_tokens=int(os.environ.get("MAX_TOTAL_TOKENS", "0")),
             stream=os.environ.get("STREAM", "1") != "0",
+            code_map=os.environ.get("CODE_MAP", "1") != "0",
+            code_map_chars=int(os.environ.get("CODE_MAP_CHARS", "4000")),
             auto_explore=os.environ.get("AUTO_EXPLORE", "off"),
             explore_min_files=int(os.environ.get("EXPLORE_MIN_FILES", "200")),
             explore_min_loc=int(os.environ.get("EXPLORE_MIN_LOC", "20000")),

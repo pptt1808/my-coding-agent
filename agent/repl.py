@@ -39,6 +39,7 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /task clear      clear the todo list
   /review          diff changes since session start, run tests, judge the diff
   /explore         run a cheap read-only subagent and add a project brief to context
+  /codemap         show the Aider-style repo map (codebase structure) for this workspace
   /plan            explore + plan a todo list with cheap subagents
   /permissions     show workdir + blacklist
   /permissions block <pattern>   add a session blacklist pattern
@@ -46,7 +47,7 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
 Anything else is sent to the agent as a new turn."""
 
 COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
-            "save", "resume", "ls", "task", "review", "explore", "plan", "permissions"]
+            "save", "resume", "ls", "task", "review", "explore", "plan", "permissions", "codemap"]
 
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
@@ -242,6 +243,13 @@ class ReplSession:
             return self._review()
         if cmd == "/explore":
             return self._explore()
+        if cmd == "/codemap":
+            try:
+                from .repomap import code_map
+                m = code_map(self._config.workdir, max_chars=self._config.code_map_chars)
+                return [f"[codemap] {len(m)} chars", m[:1500]]
+            except Exception as exc:
+                return [f"[codemap] failed: {exc}"]
         if cmd == "/plan":
             return self._plan()
         if cmd == "/permissions":

@@ -1,0 +1,25 @@
+c19b6a6a5ff847b71ed16141df68499bd02383cb
+## agent\cli.py
+def apply_workdir(cfg, workdir)
+def read_interactive_line(prompt, on_slash, _read_char)
+def _cmd_config(_args)
+def _parse_tools(raw)
+def _cmd_run(args)
+def _cmd_chat(args)
+def _cmd_pm(args)
+def main(argv)
+## agent\compact.py
+def summarize_conversation(llm, messages)
+## agent\config.py
+def _find_env_file()
+class Config()
+  def explore_model_name(self)
+  def eval_model_name(self)
+  def from_env(cls, env_file)
+## agent\diff.py
+def snapshot_dir(root, skip_dirs)
+def collect_diff(before, after)
+def collect_diff_dirs(before, after, skip_dirs)
+## agent\errors.py
+class AgentError(Except
+... [map truncated]
