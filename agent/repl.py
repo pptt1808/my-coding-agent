@@ -22,6 +22,10 @@ from .loop import CodingAgent
 from .session import Session, list_sessions, load_session, new_session_id, save_session
 from eval.judge import Judge
 
+# directories excluded from undo snapshots (cache/noise, not user content)
+_UNDO_SKIP = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules",
+              ".coding-agent", ".idea", ".vscode", ".env", "build", "dist"}
+
 HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /help            show this help
   /exit            quit the session
@@ -38,6 +42,8 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /task done <n>   mark todo #n done (removes it)
   /task clear      clear the todo list
   /review          diff changes since session start, run tests, judge the diff
+  /undo            revert the workdir to before the last turn (checkpoint)
+  /redo            re-apply the last undo
   /explore         run a cheap read-only subagent and add a project brief to context
   /codemap         show the Aider-style repo map (codebase structure) for this workspace
   /plan            explore + plan a todo list with cheap subagents
@@ -47,7 +53,8 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
 Anything else is sent to the agent as a new turn."""
 
 COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
-            "save", "resume", "ls", "task", "review", "explore", "plan", "permissions", "codemap"]
+            "save", "resume", "ls", "task", "review", "undo", "redo",
+            "explore", "plan", "permissions", "codemap"]
 
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
@@ -106,6 +113,8 @@ class ReplSession:
         self._messages: list[dict[str, Any]] = []
         self._todos: list[str] = []
         self._snapshot = snapshot_dir(self._config.workdir)  # for /review
+        self._undo_stack: list[dict[str, str]] = []  # undo/redo snapshots (U1-U4)
+        self._redo_stack: list[dict[str, str]] = []
         self._stream = stream
         self._echo_input = echo_input
         self.running = True
@@ -133,6 +142,8 @@ class ReplSession:
         if self._echo_input:
             print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
         prev_messages = list(self._messages)  # for Ctrl+C rollback (R14)
+        # snapshot the workdir BEFORE the turn so /undo can revert the agent's edits
+        self._before_turn_snapshot()
         self._messages.append({"role": "user", "content": line})
         try:
             if self._stream:
@@ -156,6 +167,45 @@ class ReplSession:
             # Ctrl+C mid-turn: discard partial output and restore the conversation.
             self._messages = prev_messages
             raise
+
+    # ------------------------------------------------------------------ undo / redo
+
+    def _before_turn_snapshot(self) -> None:
+        self._undo_stack.append(snapshot_dir(self._config.workdir, _UNDO_SKIP))
+        self._redo_stack.clear()  # new change invalidates redo
+
+    def _restore_workdir(self, snapshot: dict[str, str]) -> None:
+        """Revert the workdir to a snapshot: write files, delete files that weren't there."""
+        from pathlib import Path
+        root = Path(self._config.workdir)
+        current = snapshot_dir(root, _UNDO_SKIP)
+        for rel, content in snapshot.items():
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        for rel in current:
+            if rel not in snapshot:
+                p = root / rel
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+
+    def _undo(self) -> list[str]:
+        if not self._undo_stack:
+            return ["(nothing to undo)"]
+        snapshot = self._undo_stack.pop()
+        self._redo_stack.append(snapshot_dir(self._config.workdir, _UNDO_SKIP))
+        self._restore_workdir(snapshot)
+        return [f"[undo] reverted workdir ({len(snapshot)} files)"]
+
+    def _redo(self) -> list[str]:
+        if not self._redo_stack:
+            return ["(nothing to redo)"]
+        snapshot = self._redo_stack.pop()
+        self._undo_stack.append(snapshot_dir(self._config.workdir, _UNDO_SKIP))
+        self._restore_workdir(snapshot)
+        return [f"[redo] re-applied ({len(snapshot)} files)"]
 
     # ---------------------------------------------------------------- slash
 
@@ -241,6 +291,10 @@ class ReplSession:
             return self._task(arg)
         if cmd == "/review":
             return self._review()
+        if cmd == "/undo":
+            return self._undo()
+        if cmd == "/redo":
+            return self._redo()
         if cmd == "/explore":
             return self._explore()
         if cmd == "/codemap":

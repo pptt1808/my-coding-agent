@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from agent.config import Config
-from agent.llm import LLMResult
+from agent.llm import LLMResult, ToolCall
 from agent.repl import ReplSession
 
 
@@ -208,3 +208,62 @@ def test_r14_ctrl_c_mid_turn_restores_history(tmp_path):
 
     sess._agent._llm = OkLLM()
     assert sess.handle("again") == ["ok"]  # session still usable
+
+
+# --------------------------- undo / redo (specs/cli.md U1-U4) ---------------------------
+
+class EditingLLM:
+    """Writes a file each turn (no final answer) — simulates the agent editing the workdir."""
+
+    def __init__(self, path, content):
+        self.path = path
+        self.content = content
+
+    def complete(self, _sys, _messages, _tools=None):
+        return LLMResult(text="", tool_calls=[ToolCall("c1", "write_file",
+                                                       {"path": self.path, "content": self.content})],
+                         usage={"total_tokens": 1})
+
+
+def _sess(tmp_path, llm):
+    return ReplSession(Config(api_key="x", workdir=tmp_path, max_steps=3), llm=llm, stream=False)
+
+
+def test_u1_undo_reverts_file_change(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    sess = _sess(tmp_path, EditingLLM("a.py", "x = 2\n"))
+    sess.handle("change a.py")
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "x = 2\n"
+    sess.handle("/undo")
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_u2_redo_reapplies_change(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    sess = _sess(tmp_path, EditingLLM("a.py", "x = 2\n"))
+    sess.handle("change a.py")
+    sess.handle("/undo")
+    sess.handle("/redo")
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_u3_multiple_undos(tmp_path):
+    (tmp_path / "a.py").write_text("v0\n", encoding="utf-8")
+    sess = _sess(tmp_path, EditingLLM("a.py", "v1\n"))
+    sess.handle("one")
+    sess._agent._llm = EditingLLM("a.py", "v2\n")
+    sess.handle("two")
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "v2\n"
+    sess.handle("/undo")
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "v1\n"  # back to after turn 1
+    sess.handle("/undo")
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == "v0\n"  # back to original
+
+
+def test_u4_undo_removes_new_file(tmp_path):
+    (tmp_path / "a.py").write_text("ok\n", encoding="utf-8")
+    sess = _sess(tmp_path, EditingLLM("new.txt", "runtime\n"))
+    sess.handle("create new.txt")
+    assert (tmp_path / "new.txt").exists()
+    sess.handle("/undo")
+    assert not (tmp_path / "new.txt").exists()  # created file reverted
