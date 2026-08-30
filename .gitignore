@@ -23,6 +23,9 @@ Thumbs.db
 # Local swe-bench repo cache (large clones)
 swe_work/
 
+# Session + cache store (sessions, repo-map cache) — never commit
+.coding-agent/
+
 # IDE
 .idea/
 .vscode/
