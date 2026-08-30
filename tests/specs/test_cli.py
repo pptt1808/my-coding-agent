@@ -45,6 +45,31 @@ def test_r15_slash_first_char_opens_menu_without_enter(tty, capsys):
     assert "MENU" in capsys.readouterr().out
 
 
+def test_r15e_slash_menu_then_full_command_no_double_slash(tty, capsys):
+    """Regression: '/' opens the menu, then the user types the FULL command with
+    its own leading '/' (the common `/pm` case). Must NOT produce '//pm'."""
+    seen = []
+    def _on_slash():
+        seen.append("MENU")
+        print("MENU")
+    line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
+                                     _read_char=_reader(["/", "/", "p", "m", "\r"]))
+    assert seen == ["MENU"]          # menu still opened on first '/'
+    assert line == "/pm"             # exactly one leading slash, not "//pm"
+
+
+def test_r15f_slash_menu_then_suffix_no_extra_slash(tty, capsys):
+    """After the menu, typing only the suffix (no extra '/') still auto-prepends."""
+    seen = []
+    def _on_slash():
+        seen.append("MENU")
+        print("MENU")
+    line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
+                                     _read_char=_reader(["/", "p", "m", "\r"]))
+    assert seen == ["MENU"]
+    assert line == "/pm"
+
+
 def test_r15b_normal_line_no_menu(tty, capsys):
     seen = []
     line = cli.read_interactive_line("❯ ", on_slash=lambda: seen.append("MENU"),

@@ -161,6 +161,17 @@ def test_r12e_fullwidth_slash_command_works(session):
     assert sess.running is False
 
 
+def test_r12f_double_slash_is_collapsed(session):
+    """Regression: a stray leading '//' must be collapsed to '/' so it routes
+    as a command instead of "unknown command: //pm"."""
+    sess, _ = session
+    # '//exit' and '///exit' both behave like '/exit'
+    for line in ("//exit", "///exit"):
+        s = ReplSession(Config(api_key="x", workdir=sess._config.workdir), llm=sess._llm, stream=False)
+        s.handle(line)
+        assert s.running is False
+
+
 def test_r13_echo_input_renders_chat_box(capsys, tmp_path):
     class Fake:
         def complete(self, _sys, _messages, _tools=None):

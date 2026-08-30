@@ -133,6 +133,10 @@ class ReplSession:
             return []
         if line.startswith("／"):  # full-width slash from CJK IMEs -> "/" (R12)
             line = "/" + line[1:]
+        # defensive: collapse a stray leading "//" (e.g. pasted command or a
+        # double-slash from the interactive menu path) into a single "/".
+        while line.startswith("//"):
+            line = line[1:]
         if line.startswith("/"):
             return self._slash(line)
         return self._turn(line)

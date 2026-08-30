@@ -66,6 +66,15 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None) -> str | None:
             sys.stdout.write(prompt)
             sys.stdout.flush()
             continue
+        # Menu already opened (leading '/' was consumed) but the user typed
+        # another '/' — e.g. "/pm" -> "/" then "/pm". That '/' is the real
+        # command slash, so stop auto-prepending to avoid "//pm".
+        if slash_seen and not chars and ch == "/":
+            slash_seen = False
+            chars.append(ch)
+            sys.stdout.write(ch)
+            sys.stdout.flush()
+            continue
         chars.append(ch)
         sys.stdout.write(ch)
         sys.stdout.flush()
