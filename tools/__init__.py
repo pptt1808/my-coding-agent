@@ -5,7 +5,7 @@ does this) so the model sees read_file/write_file/bash.
 """
 from __future__ import annotations
 
-from . import context, file_ops, schemas, shell  # noqa: F401  (re-export)
+from . import context, file_ops, schemas, shell, skills_tool  # noqa: F401  (re-export)
 from .registry import dispatch, register, tool_schemas
 
 
@@ -19,6 +19,8 @@ def register_builtins() -> None:
     register("grep", schemas.GREP, file_ops.grep)
     register("append_file", schemas.APPEND_FILE, file_ops.append_file)
     register("edit_file", schemas.EDIT_FILE, file_ops.edit_file)
+    register("Skill", schemas.SKILL, skills_tool.skill)
 
 
-__all__ = ["context", "file_ops", "schemas", "shell", "dispatch", "register", "tool_schemas", "register_builtins"]
+__all__ = ["context", "file_ops", "schemas", "shell", "skills_tool",
+           "dispatch", "register", "tool_schemas", "register_builtins"]

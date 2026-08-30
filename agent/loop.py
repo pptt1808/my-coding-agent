@@ -137,6 +137,15 @@ class CodingAgent:
                     system_prompt += "\n\nPROJECT CONVENTIONS (AGENT.md — follow these):\n" + txt
             except Exception:
                 pass
+        # Skill system: inject a catalog of available skills so the model can invoke `Skill`.
+        if self._config.skills:
+            try:
+                from .skills import skills_catalog_block
+                block = skills_catalog_block(self._workdir)
+                if block:
+                    system_prompt += "\n\n" + block
+            except Exception:
+                pass
         terminator = Terminator(self._config)
         state = LoopState()
         last_tool: str | None = None

@@ -65,6 +65,7 @@ class Config:
     code_map_chars: int = 4000
     agent_md: bool = True  # read <workdir>/AGENT.md (project conventions) into context
     agent_md_chars: int = 2000
+    skills: bool = True  # inject a skills catalog + a `Skill` tool (discovery/invoke)
     # Multi-agent: cheap read-only exploration, gated (default OFF)
     auto_explore: str = "off"  # off | auto | always
     explore_min_files: int = 200
@@ -121,6 +122,7 @@ class Config:
             code_map_chars=int(os.environ.get("CODE_MAP_CHARS", "4000")),
             agent_md=os.environ.get("AGENT_MD", "1") != "0",
             agent_md_chars=int(os.environ.get("AGENT_MD_CHARS", "2000")),
+            skills=os.environ.get("SKILLS", "1") != "0",
             auto_explore=os.environ.get("AUTO_EXPLORE", "off"),
             explore_min_files=int(os.environ.get("EXPLORE_MIN_FILES", "200")),
             explore_min_loc=int(os.environ.get("EXPLORE_MIN_LOC", "20000")),

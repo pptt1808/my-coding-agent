@@ -39,7 +39,7 @@ python tools/run_bigcodebench.py --limit 30   # BigCodeBench subset (env-friendl
 
 ## Tests
 ```bash
-pytest                      # 179 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/multi-agent/pm-mode/repomap/agentmd/cli/...)
+pytest                      # 184 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/multi-agent/pm-mode/repomap/agentmd/skills/cli/...)
 ```
 
 ## Evaluation task set (difficulty gradient)

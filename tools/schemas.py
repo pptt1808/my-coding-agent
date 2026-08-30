@@ -138,4 +138,19 @@ EDIT_FILE: dict[str, Any] = {
     },
 }
 
-ALL: list[dict[str, Any]] = [READ_FILE, WRITE_FILE, BASH, LIST_DIR, GLOB, GREP, APPEND_FILE, EDIT_FILE]
+SKILL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "Skill",
+        "description": "Load a skill package's instructions (its SKILL.md body) by name, from the available-skills catalog. Use when the task matches a skill's description.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The skill name to load."},
+            },
+            "required": ["name"],
+        },
+    },
+}
+
+ALL: list[dict[str, Any]] = [READ_FILE, WRITE_FILE, BASH, LIST_DIR, GLOB, GREP, APPEND_FILE, EDIT_FILE, SKILL]
