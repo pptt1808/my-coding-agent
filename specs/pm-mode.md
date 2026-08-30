@@ -1,7 +1,7 @@
 # pm-mode.md — 产品经理演示开发模式（个性化）
 
 职责：为 vibe-coding 演示场景提供**产品思维**的开发模式（我们自己的原创整合，无开源可抄）。agent 扮演"产品型 demo 建造者"：先澄清产品问题（给谁看/证明什么/爽点），做**最小可运行** demo，打磨 demo 时刻，并交付**四件产品交付物**（spec/story/可运行 demo/pitch），而不是只给代码。
-接口：`coding-agent pm`（PM persona 交互 + `/vision /story /mvp /polish /pitch`）；`agent/pm.py`：`PmSession.create(config, ...)`、`turn(line)`、`run_step(step, task)`；交付物写 `<workdir>/demo/{DEMO_SPEC, DEMO_SCRIPT, PITCH}.md` 与 demo 代码。
+接口：**`/pm` 是原 `coding-agent chat`（ReplSession）的一个模式**，不是新 agent——输入 `/pm` 切换 persona（`apply_pm_mode(player)` 设置 `agent._system_prompt_override`），再 `/pm` 回到普通模式；PM 步骤命令 `/vision /story /mvp /validate /polish /pitch` 在 pm 模式下经 `agent/pm.py` 的模块函数 `pm_step/pg_turn` 驱动。交付物写 `<workdir>/demo/{DEMO_SPEC, DEMO_SCRIPT, PITCH}.md` 与 demo 代码。
 
 行为：
 - **分阶段 + 关卡（gate）**：`/mvp`/`/story`/`/pitch` 在无 spec 时**拒绝**（必须先 `/vision` 对齐）；persona 强制"先澄清（一次一问）→ 写 spec → 用户确认 → 才建"，不跳步；

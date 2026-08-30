@@ -267,3 +267,20 @@ def test_u4_undo_removes_new_file(tmp_path):
     assert (tmp_path / "new.txt").exists()
     sess.handle("/undo")
     assert not (tmp_path / "new.txt").exists()  # created file reverted
+
+
+def test_pm_mode_toggles_within_same_session(tmp_path):
+    """PM mode is a mode of the SAME agent, activated by /pm (not a separate agent)."""
+    class FakePMLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="# DEMO_SPEC.md\n## Vision\nA demo\n## Acceptance\npass", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=FakePMLLM(), stream=False)
+    out = sess.handle("/pm")
+    assert any("PM mode on" in line for line in out)  # enters PM mode
+    assert sess._pm_mode is True
+    sess.handle("/vision")  # a PM step, still the same session
+    assert (tmp_path / "demo" / "DEMO_SPEC.md").exists()
+    out2 = sess.handle("/pm")
+    assert any("normal" in line for line in out2)  # back to normal mode
+    assert sess._pm_mode is False

@@ -156,70 +156,6 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     return 0
 
 
-PM_HELP = """pm demo mode — PM-minded demo builder (product process, not just code):
-  /vision   clarify + write demo/DEMO_SPEC.md (must confirm before building)
-  /story    write a 30s narrative -> demo/DEMO_SCRIPT.md
-  /mvp      build the SMALLEST runnable demo (gated: needs a confirmed spec)
-  /validate run it for you and get real feedback (the iteration loop)
-  /polish   make the demo happy path crisp
-  /pitch    write demo/PITCH.md (value prop / next steps)
-  /exit     quit
-Anything else is a normal turn (describe the idea / answer the agent's questions)."""
-
-
-def _cmd_pm(args: argparse.Namespace) -> int:
-    cfg = apply_workdir(Config.from_env(), args.workdir)
-    from .pm import PmSession
-
-    if os.name == "nt":
-        os.system("")
-    for _stream in (sys.stdout, sys.stderr, sys.stdin):
-        try:
-            _stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError):
-            pass
-
-    session = PmSession.create(cfg, model=args.model)
-    print(f"pm demo mode — model={session._agent.model} workdir={cfg.workdir}  (type / for commands)")
-
-    while True:
-        try:
-            if sys.stdin.isatty():
-                line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=lambda: print(PM_HELP))
-                if line is None:
-                    break
-            else:
-                line = sys.stdin.readline()
-                if not line:
-                    break
-        except KeyboardInterrupt:
-            print("bye.")
-            return 0
-        line = line.strip()
-        if line == "/exit":
-            print("bye.")
-            return 0
-        if line == "/help":
-            print(PM_HELP)
-            continue
-        if line.startswith("/") and line[1:] in ("vision", "story", "mvp", "polish", "pitch", "validate"):
-            step = line[1:]
-            try:
-                for out in session.run_step(step, ""):
-                    print(out, flush=True)
-            except KeyboardInterrupt:
-                print("\n[cancelled]", flush=True)
-            continue
-        if line.startswith("/"):
-            print(f"unknown: {line}  (type / for commands)")
-            continue
-        try:
-            for out in session.turn(line):
-                print(out, flush=True)
-        except KeyboardInterrupt:
-            print("\n[cancelled]", flush=True)
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="coding-agent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -240,10 +176,6 @@ def main(argv: list[str] | None = None) -> int:
     chat.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
     chat.add_argument("--no-stream", action="store_true", help="disable token streaming output")
     chat.set_defaults(func=_cmd_chat)
-    pm = sub.add_parser("pm", help="product-manager demo mode (vibe-coding demos: /vision /story /mvp /polish /pitch)")
-    pm.add_argument("--model", default=None, help="override the model tier")
-    pm.add_argument("--workdir", default=None, help="workspace directory (default: current directory)")
-    pm.set_defaults(func=_cmd_pm)
     args = parser.parse_args(argv)
     return args.func(args)
 

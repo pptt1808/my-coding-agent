@@ -48,6 +48,7 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /codemap         show the Aider-style repo map (codebase structure) for this workspace
   /skills          list available skill packages (skills/<name>/SKILL.md)
   /skill <name>    load a skill's instructions into context
+  /pm              toggle PM demo mode (same agent; /vision /story /mvp /validate /polish /pitch)
   /plan            explore + plan a todo list with cheap subagents
   /permissions     show workdir + blacklist
   /permissions block <pattern>   add a session blacklist pattern
@@ -56,7 +57,7 @@ Anything else is sent to the agent as a new turn."""
 
 COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
             "save", "resume", "ls", "task", "review", "undo", "redo",
-            "explore", "plan", "permissions", "codemap", "skills"]
+            "explore", "plan", "permissions", "codemap", "skills", "pm"]
 
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
@@ -117,6 +118,8 @@ class ReplSession:
         self._snapshot = snapshot_dir(self._config.workdir)  # for /review
         self._undo_stack: list[dict[str, str]] = []  # undo/redo snapshots (U1-U4)
         self._redo_stack: list[dict[str, str]] = []
+        self._pm_mode = False  # PM mode is a mode of THIS agent (activated via /pm)
+        self._pm_messages: list[dict[str, Any]] = []
         self._stream = stream
         self._echo_input = echo_input
         self.running = True
@@ -141,6 +144,10 @@ class ReplSession:
         return "TASK LIST (track your work against these items):\n" + items
 
     def _turn(self, line: str) -> list[str]:
+        if self._pm_mode:
+            from .pm import pm_turn
+            self._pm_messages, out = pm_turn(self._agent, self._pm_messages, line)
+            return out
         if self._echo_input:
             print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
         prev_messages = list(self._messages)  # for Ctrl+C rollback (R14)
@@ -231,6 +238,20 @@ class ReplSession:
 
         if cmd == "/help":
             return [HELP]
+        # PM mode: /pm toggles a MODE of this same agent; pm steps when in that mode.
+        if cmd == "/pm":
+            from .pm import apply_pm_mode, exit_pm_mode
+            if not self._pm_mode:
+                self._pm_mode = True
+                self._pm_messages = []
+                return [apply_pm_mode(self._agent)]
+            self._pm_mode = False
+            return [exit_pm_mode(self._agent)]
+        if self._pm_mode and cmd[1:] in ("vision", "story", "mvp", "validate", "polish", "pitch"):
+            from .pm import pm_step
+            self._pm_messages, out = pm_step(self._agent, self._pm_messages,
+                                             self._config.workdir, cmd[1:], "")
+            return out
         if cmd == "/exit":
             self.running = False
             return ["bye."]

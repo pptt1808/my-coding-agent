@@ -30,8 +30,7 @@ cp .env.example .env        # then fill in your API key (never commit .env)
 coding-agent config         # print resolved configuration
 coding-agent run "fix the bug in src/util.py"          # one-shot (dev tier MODEL)
 coding-agent run "..." --model deepseek-v4-pro         # override tier
-coding-agent chat            # interactive REPL (streaming, chat-bubble, type "/" for menu; /undo /redo /codemap ...)
-coding-agent pm              # PM demo mode (vibe-coding: /vision /story /mvp /validate /polish /pitch)
+coding-agent chat            # interactive REPL (type "/pm" for PM demo mode; /undo /redo /codemap ...)
 python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs .env key)
 coding-agent run "..." --explore   # force a cheap read-only explore subagent first (gated)
 python tools/run_bigcodebench.py --limit 30   # BigCodeBench subset (env-friendly benchmark)

@@ -125,9 +125,99 @@ def _looks_like_meta(text: str) -> bool:
     return len(stripped) < 20
 
 
+def build_pm_persona(workdir: Path | str) -> str:
+    """The PM persona, optionally enriched with a persistent PM_PROFILE.md."""
+    persona = PM_PERSONA.format(workdir=workdir)
+    profile = Path(workdir) / "PM_PROFILE.md"
+    if profile.exists():
+        try:
+            persona += "\n\nUSER PM PROFILE (follow the user's preference):\n" + \
+                profile.read_text(encoding="utf-8")[:2000]
+        except Exception:
+            pass
+    return persona
+
+
+def apply_pm_mode(agent: CodingAgent) -> str:
+    """Switch the SAME agent into PM mode (persona override) — a mode, not a new agent."""
+    agent._system_prompt_override = build_pm_persona(agent._workdir)
+    return "PM mode on — I'll clarify before building. Steps: /vision /story /mvp /validate /polish /pitch. /pm again to exit."
+
+
+def exit_pm_mode(agent: CodingAgent) -> str:
+    agent._system_prompt_override = None
+    return "back to normal coding mode."
+
+
+def demo_dir(workdir: Path | str) -> Path:
+    d = Path(workdir) / DEMO_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def artifact_path(workdir: Path | str, step: str) -> Path:
+    return demo_dir(workdir) / ARTIFACTS[step]
+
+
+def pm_turn(agent: CodingAgent, messages: list[dict[str, Any]], line: str,
+            ) -> tuple[list[dict[str, Any]], list[str]]:
+    """A normal turn inside PM mode: the agent (with the PM persona) converses/clarifies."""
+    messages = list(messages) + [{"role": "user", "content": line}]
+    answer, messages = agent.run_turn(messages)
+    return messages, [answer]
+
+
+def pm_step(agent: CodingAgent, messages: list[dict[str, Any]], workdir: Path | str,
+            step: str, task: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """Run one PM step against the SAME agent; persist its artifact; enforces gates."""
+    if step not in STEPS:
+        return messages, [f"unknown pm step: {step} (use /vision /story /mvp /polish /pitch /validate)"]
+    demo_dir(workdir)
+    mvp_gate = ("mvp", "vision")
+    if step == "mvp" and not artifact_path(workdir, "vision").exists():
+        return messages, ["[pm:mvp] gate refused: run /vision first to align the spec, then I'll build "
+                          "the smallest demo. We won't skip product clarity."]
+    if step in ("story", "pitch") and not artifact_path(workdir, "vision").exists():
+        return messages, [f"[pm:{step}] gate refused: no spec yet — run /vision to define the demo first."]
+    messages = list(messages) + [{"role": "user", "content": task}]
+    answer, messages = agent.run_turn(messages, extra_system=STEP_PROMPTS[step])
+    if step in ARTIFACTS:
+        return _write_artifact(agent, messages, workdir, step, answer)
+    return messages, [f"[pm:{step}] {answer[:800]}"]
+
+
+def _write_artifact(agent: CodingAgent, messages: list[dict[str, Any]], workdir: Path | str,
+                    step: str, answer: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """Persist a clean artifact; warn + let the user confirm if the model keeps replying with meta."""
+    path = artifact_path(workdir, step)
+    doc = _extract_markdown_doc(answer)
+    if doc and not _looks_like_meta(doc):
+        answer = doc
+    if _looks_like_meta(answer):
+        for _ in range(2):
+            messages = list(messages) + [{"role": "user", "content":
+                f"Reply with ONLY the markdown content for {ARTIFACTS[step]}. "
+                f"Start with a heading like '# {ARTIFACTS[step]}'. No preamble, no "
+                "'done / all set / where things stand' notes. The entire reply IS the file."}]
+            answer2, messages = agent.run_turn(messages)
+            doc2 = _extract_markdown_doc(answer2)
+            if doc2 and not _looks_like_meta(doc2):
+                answer = doc2
+                break
+            if not _looks_like_meta(answer2):
+                answer = answer2
+                break
+    path.write_text(answer, encoding="utf-8")
+    if _looks_like_meta(answer):
+        return messages, [f"[pm:{step}] ⚠ wrote {path.name} ({len(answer)} chars) — the model kept "
+                          f"replying with meta, so please review {path.name} manually or re-run the step.",
+                          answer[:400]]
+    return messages, [f"[pm:{step}] wrote {path.name} ({len(answer)} chars)", answer[:1000]]
+
+
 @dataclass
 class PmSession:
-    """One PM demo session: keeps the product context; writes artifacts to the demo dir."""
+    """Thin wrapper over the shared PM functions (a single agent in PM mode)."""
 
     _agent: CodingAgent
     _workdir: Path
@@ -135,78 +225,14 @@ class PmSession:
 
     @classmethod
     def create(cls, config: Config, llm: LLMClient | None = None, model: str | None = None) -> "PmSession":
-        persona = PM_PERSONA.format(workdir=config.workdir)
-        # persistent user PM preferences (CLAUDE.md-style): read PM_PROFILE.md if present
-        profile = Path(config.workdir) / "PM_PROFILE.md"
-        if profile.exists():
-            try:
-                persona += "\n\nUSER PM PROFILE (follow the user's preference):\n" + \
-                    profile.read_text(encoding="utf-8")[:2000]
-            except Exception:
-                pass
+        persona = build_pm_persona(config.workdir)
         return cls(_agent=CodingAgent(config, llm=llm, model=model, system_prompt=persona),
                    _workdir=config.workdir)
 
-    def demo_dir(self) -> Path:
-        d = self._workdir / DEMO_DIR
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    def _artifact(self, step: str) -> Path:
-        return self.demo_dir() / ARTIFACTS[step]
-
     def turn(self, line: str) -> list[str]:
-        """A plain conversational turn in the PM persona (describe the idea, answer questions)."""
-        self._messages.append({"role": "user", "content": line})
-        answer, self._messages = self._agent.run_turn(self._messages)
-        return [answer]
+        self._messages, out = pm_turn(self._agent, self._messages, line)
+        return out
 
     def run_step(self, step: str, task: str) -> list[str]:
-        """Run one PM step with the persona + step-specific instruction; persist its artifact."""
-        if step not in STEPS:
-            return [f"unknown pm step: {step} (use /vision /story /mvp /polish /pitch /validate)"]
-        self.demo_dir()  # ensure the PM workspace exists for every step
-        # HARD GATE: MVP requires an (already-clarified) spec — never build before alignment.
-        if step == "mvp" and not self._artifact("vision").exists():
-            return ["[pm:mvp] gate refused: run /vision first to align the spec, then I'll build "
-                    "the smallest demo. We won't skip product clarity."]
-        if step in ("story", "pitch") and not self._artifact("vision").exists():
-            return [f"[pm:{step}] gate refused: no spec yet — run /vision to define the demo first."]
-        # include the persona + step instruction + the accumulated product context
-        extra = STEP_PROMPTS[step]
-        self._messages.append({"role": "user", "content": task})
-        answer, self._messages = self._agent.run_turn(self._messages, extra_system=extra)
-        # persist the artifact (vision/story/pitch write text; mvp/polish write code + a note)
-        if step in ARTIFACTS:
-            return self._write_artifact(step, answer)
-        return [f"[pm:{step}] {answer[:800]}"]
-
-    def _write_artifact(self, step: str, answer: str) -> list[str]:
-        """Persist a clean artifact; warn + let the user confirm if the model keeps replying with meta."""
-        path = self._artifact(step)
-        # 1) a reply might EMBED the markdown doc (chat preamble + "# DOC..." block) — use the block
-        doc = _extract_markdown_doc(answer)
-        if doc and not _looks_like_meta(doc):
-            answer = doc
-        # 2) if still meta, force up to 2 sharp rewrites
-        if _looks_like_meta(answer):
-            for _ in range(2):
-                self._messages.append({"role": "user", "content":
-                    f"Reply with ONLY the markdown content for {ARTIFACTS[step]}. "
-                    f"Start with a heading like '# {ARTIFACTS[step]}'. No preamble, no "
-                    "'done / all set / where things stand' notes. The entire reply IS the file."})
-                answer2, self._messages = self._agent.run_turn(self._messages)
-                doc2 = _extract_markdown_doc(answer2)
-                if doc2 and not _looks_like_meta(doc2):
-                    answer = doc2
-                    break
-                if not _looks_like_meta(answer2):
-                    answer = answer2
-                    break
-        # 3) write it; if we couldn't get clean content, FLAG it so the user confirms manually
-        path.write_text(answer, encoding="utf-8")
-        if _looks_like_meta(answer):
-            return [f"[pm:{step}] ⚠ wrote {path.name} ({len(answer)} chars) — the model kept "
-                    f"replying with meta, so please review {path.name} manually or re-run the step.",
-                    answer[:400]]
-        return [f"[pm:{step}] wrote {path.name} ({len(answer)} chars)", answer[:1000]]
+        self._messages, out = pm_step(self._agent, self._messages, self._workdir, step, task)
+        return out
