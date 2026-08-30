@@ -30,10 +30,11 @@ cp .env.example .env        # then fill in your API key (never commit .env)
 coding-agent config         # print resolved configuration
 coding-agent run "fix the bug in src/util.py"          # one-shot (dev tier MODEL)
 coding-agent run "..." --model deepseek-v4-pro         # override tier
-coding-agent chat            # interactive REPL (streaming, chat-bubble input, type "/" for the command menu)
-coding-agent pm              # product-manager demo mode (vibe-coding demos: /vision /story /mvp /polish /pitch)
+coding-agent chat            # interactive REPL (streaming, chat-bubble, type "/" for menu; /undo /redo /codemap ...)
+coding-agent pm              # PM demo mode (vibe-coding: /vision /story /mvp /validate /polish /pitch)
 python examples/live_smoke.py [--model deepseek-v4-pro]  # live e2e smoke (needs .env key)
 coding-agent run "..." --explore   # force a cheap read-only explore subagent first (gated)
+python tools/run_bigcodebench.py --limit 30   # BigCodeBench subset (env-friendly benchmark)
 ```
 
 ## Tests
@@ -69,10 +70,16 @@ Phase 1 (minimum closed loop) done + verified against a REAL model:
 - **P1 iteration**: `/save` `/resume` `/ls` session persistence (`.coding-agent/sessions/`), `/task` todo list injected into the system prompt, auto-compact (config `AUTO_COMPACT_AT_TOKENS`), `/cost` input/output token split — live-verified end to end
 - **P2 iteration**: `/review` (diff since session start + tests + LLM judge), `/permissions [block|reset]`, `--tools` tool whitelist, tail-first output truncation — plus a **real fix**: no-progress now requires identical (tool+args) repetition, so exploring different files no longer kills the loop
 - **Multi-turn real demo** (`python examples/demo_multi_turn.py`, needs key): a multi-file project (bug + missing function + missing CLI flag + test suite) completed over 3 interactive turns — fix/implement/feature all landed, 7/7 tests pass, `/review` judge scored 5/5/5/5
+- **Multi-agent (gated)**: cheap read-only explore subagent (`should_explore`: off/auto/always, deterministic zero-cost gate) + planner + parallel fan-out; A/B on a 47-file task showed **multi-agent is NOT worth it** (+283% tokens), so it's off by default with high thresholds (data-driven decision)
+- **Cost control (grounded)**: auto-compact window (Claude Code) is ON by default, `MAX_TOTAL_TOKENS` budget (AgentBudget), API retry, resumable runs — a runaway case went 126k→73k tokens
+- **improve #1-#3 (grounded in mature projects)**: Aider-style **repo-map** (ast symbol map, cached, injected), **/undo /redo** checkpoints, **AGENT.md** + **PM_PROFILE** persistent project context (CLAUDE.md-style)
+- **PM demo mode (our differentiator)**: clarify-gate (one question at a time) → DEMO_SPEC → user confirm → lean MVP → /validate feedback → story/pitch; four clean product artifacts; anti-pollution (embedded-doc extraction + retry + warn-on-meta)
+- **Benchmarks**: 6-level gradient tasks (L1-L6) + `large_task` multi-module all PASS; **BigCodeBench 30-problem subset = 40%** (env-friendly, cost-controlled); SWE-bench adapter ready
 
 ## Submission deliverables (Phase 7)
-- `README.txt` — 提交用说明（仓库地址占位、如何运行、特色功能；≤1000 汉字，当前 215 汉字）
-- `视频脚本.md` — 2 分钟演示视频时间轴 + 录制/后期清单
-- `面试自辩材料.md` — 为什么这样运转：四个自研点设计+踩坑、评测体系、尖锐问题预答、数据证据
+- `README.txt` — 提交说明（仓库地址占位、如何运行、特色功能；≤1000 汉字，当前 259 汉字）
+- `视频脚本.md` — 2 分钟演示视频时间轴（coding agent + PM 演示模式）
+- `面试自辩材料.md` — 为什么这样运转：四个自研点+踩坑、评测体系、尖锐问题预答、数据证据
+- `评审证据`：`BENCHMARK_RESULTS.md`（BigCodeBench 40%）、`合规复查.md`（逐条核对题目规则）、`改进方向对比.md`（vs 成熟开源）
 
 > 提交前必做：① 把公开仓库地址填入 README.txt；② 录制视频时隐藏一切 API key；③ 截止后不再推送新提交。
