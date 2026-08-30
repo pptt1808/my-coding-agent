@@ -148,12 +148,14 @@ class ReplSession:
         return "TASK LIST (track your work against these items):\n" + items
 
     def _turn(self, line: str) -> list[str]:
+        # echo the input as a chat bubble; the interactive reader already erased
+        # the echoed prompt line, so this bubble occupies that spot (shown once).
+        if self._echo_input:
+            print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
         if self._pm_mode:
             from .pm import pm_turn
             self._pm_messages, out = pm_turn(self._agent, self._pm_messages, line)
             return out
-        if self._echo_input:
-            print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
         prev_messages = list(self._messages)  # for Ctrl+C rollback (R14)
         # snapshot the workdir BEFORE the turn so /undo can revert the agent's edits
         self._before_turn_snapshot()

@@ -89,3 +89,27 @@ def test_r15d_non_tty_uses_input(monkeypatch, capsys):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     monkeypatch.setattr("builtins.input", lambda prompt="": "task")
     assert cli.read_interactive_line("❯ ", on_slash=lambda: None) == "task"
+
+
+def test_r15g_erase_on_enter_normal_turn(tty, capsys):
+    """Regression: with erase_on_enter, a NORMAL turn erases the echoed prompt
+    line so the bubble re-renders it in-place (shown once, not duplicated)."""
+    line = cli.read_interactive_line("❯ ", on_slash=lambda: None,
+                                     _read_char=_reader(["h", "i", "\r"]),
+                                     erase_on_enter=True)
+    assert line == "hi"
+    # the echoed line was cleared (no trailing \n), not advanced to a new line
+    out = capsys.readouterr().out
+    assert "\x1b[2K" in out
+    assert not out.endswith("\n")  # cursor stays on the same line for the bubble
+
+
+def test_r15h_erase_on_enter_command_not_erased(tty, capsys):
+    """Slash commands keep the normal newline (the bubble only wraps non-commands)."""
+    line = cli.read_interactive_line("❯ ", on_slash=lambda: None,
+                                     _read_char=_reader(["/", "h", "e", "l", "p", "\r"]),
+                                     erase_on_enter=True)
+    assert line == "/help"
+    out = capsys.readouterr().out
+    assert "\x1b[2K" not in out  # command echo is NOT erased
+    assert out.endswith("\n")    # advanced to a new line

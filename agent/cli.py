@@ -22,7 +22,8 @@ def apply_workdir(cfg: Config, workdir: str | None) -> Config:
     return replace(cfg, workdir=Path(workdir).resolve())
 
 
-def read_interactive_line(prompt: str, on_slash, _read_char=None) -> str | None:
+def read_interactive_line(prompt: str, on_slash, _read_char=None,
+                          erase_on_enter: bool = False) -> str | None:
     """Interactive line editor (Windows TTY).
 
     Typing '/' as the FIRST character opens the command menu immediately (no
@@ -47,9 +48,17 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None) -> str | None:
     while True:
         ch = reader()
         if ch in ("\r", "\n"):
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            return ("/" if slash_seen else "") + "".join(chars)
+            line = ("/" if slash_seen else "") + "".join(chars)
+            if erase_on_enter and not line.startswith("/"):
+                # The caller re-renders this as a chat bubble in the SAME spot;
+                # erase the echoed prompt line so the input is shown only ONCE
+                # (replaces the inline echo instead of duplicating it below).
+                sys.stdout.write("\r\x1b[2K")
+                sys.stdout.flush()
+            else:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            return line
         if ch == "\x03":  # Ctrl+C
             raise KeyboardInterrupt
         if ch in ("\x08", "\x7f"):  # Backspace
@@ -144,8 +153,11 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     while session.running:
         try:
             if sys.stdin.isatty():
-                # Windows interactive: typing '/' as the first char opens the menu
-                line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=lambda: print(HELP))
+                # Windows interactive: typing '/' as the first char opens the menu.
+                # erase_on_enter: the caller re-renders the line as a chat bubble
+                # in-place, so erase the echoed prompt line (input shown once).
+                line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=lambda: print(HELP),
+                                             erase_on_enter=True)
                 if line is None:
                     break
             else:
