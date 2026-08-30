@@ -38,7 +38,7 @@ coding-agent run "..." --explore   # force a cheap read-only explore subagent fi
 
 ## Tests
 ```bash
-pytest                      # 162 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/multi-agent/pm-mode/cli/...)
+pytest                      # 179 contract tests (specs/tools/loop/eval/repl/compact/session/tasklist/permissions/review/multi-agent/pm-mode/repomap/agentmd/cli/...)
 ```
 
 ## Evaluation task set (difficulty gradient)

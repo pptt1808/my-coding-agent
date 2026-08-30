@@ -52,5 +52,6 @@ layer that grades the running agent — see 开发文档 §6.4.
 | `multi-agent.md` | `agent/multi.py`, `agent/cli.py`, `agent/repl.py` | E1-E7 | ✅ Phase A 已实现 |
 | `pm-mode.md` | `agent/pm.py`, `agent/cli.py` | P1-P10 | ✅ 个性化已实现 |
 | `repomap.md` | `agent/repomap.py`, `agent/loop.py`, `agent/repl.py` | R1-R5 | ✅ 改进#1 已实现 |
+| `agentmd.md` | `agent/loop.py`, `agent/pm.py` | M1-M4 | ✅ 改进#3 已实现 |
 
 每份 spec 对应的契约测试在 `tests/specs/test_<name>.py`，应在实现**之前**编写（先红后绿）。

@@ -128,6 +128,15 @@ class CodingAgent:
                     system_prompt += "\n\nCODE MAP (repo structure — use it to locate code):\n" + cmap
             except Exception:
                 pass
+        # Persistent project conventions (CLAUDE.md-style): read AGENT.md if present.
+        if self._config.agent_md:
+            try:
+                md_file = self._workdir / "AGENT.md"
+                if md_file.exists():
+                    txt = md_file.read_text(encoding="utf-8")[: self._config.agent_md_chars]
+                    system_prompt += "\n\nPROJECT CONVENTIONS (AGENT.md — follow these):\n" + txt
+            except Exception:
+                pass
         terminator = Terminator(self._config)
         state = LoopState()
         last_tool: str | None = None

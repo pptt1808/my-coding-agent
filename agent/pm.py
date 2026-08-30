@@ -135,8 +135,16 @@ class PmSession:
 
     @classmethod
     def create(cls, config: Config, llm: LLMClient | None = None, model: str | None = None) -> "PmSession":
-        return cls(_agent=CodingAgent(config, llm=llm, model=model,
-                                      system_prompt=PM_PERSONA.format(workdir=config.workdir)),
+        persona = PM_PERSONA.format(workdir=config.workdir)
+        # persistent user PM preferences (CLAUDE.md-style): read PM_PROFILE.md if present
+        profile = Path(config.workdir) / "PM_PROFILE.md"
+        if profile.exists():
+            try:
+                persona += "\n\nUSER PM PROFILE (follow the user's preference):\n" + \
+                    profile.read_text(encoding="utf-8")[:2000]
+            except Exception:
+                pass
+        return cls(_agent=CodingAgent(config, llm=llm, model=model, system_prompt=persona),
                    _workdir=config.workdir)
 
     def demo_dir(self) -> Path:
