@@ -1,7 +1,7 @@
 编程智能体 coding-agent
 
 【Git 仓库】
-https://github.com/你的用户名/coding-agent   （提交前请替换为真实公开仓库地址）
+https://github.com/pptt1808/my-coding-agent
 
 【如何运行】
 1. Python 3.11+，pip install -e ".[dev]"
