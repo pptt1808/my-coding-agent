@@ -168,8 +168,13 @@ def pm_turn(agent: CodingAgent, messages: list[dict[str, Any]], line: str,
 
 
 def pm_step(agent: CodingAgent, messages: list[dict[str, Any]], workdir: Path | str,
-            step: str, task: str) -> tuple[list[dict[str, Any]], list[str]]:
-    """Run one PM step against the SAME agent; persist its artifact; enforces gates."""
+            step: str, task: str, stream: bool = False,
+            on_delta: Any | None = None) -> tuple[list[dict[str, Any]], list[str]]:
+    """Run one PM step against the SAME agent; persist its artifact; enforces gates.
+
+    `stream=True` + `on_delta` streams the step's answer text as it arrives, so
+    `/vision` etc. display incrementally instead of appearing all at once.
+    """
     if step not in STEPS:
         return messages, [f"unknown pm step: {step} (use /vision /story /mvp /polish /pitch /validate)"]
     demo_dir(workdir)
@@ -180,7 +185,8 @@ def pm_step(agent: CodingAgent, messages: list[dict[str, Any]], workdir: Path | 
     if step in ("story", "pitch") and not artifact_path(workdir, "vision").exists():
         return messages, [f"[pm:{step}] gate refused: no spec yet — run /vision to define the demo first."]
     messages = list(messages) + [{"role": "user", "content": task}]
-    answer, messages = agent.run_turn(messages, extra_system=STEP_PROMPTS[step])
+    answer, messages = agent.run_turn(messages, extra_system=STEP_PROMPTS[step],
+                                      stream=stream, on_delta=on_delta)
     if step in ARTIFACTS:
         return _write_artifact(agent, messages, workdir, step, answer)
     return messages, [f"[pm:{step}] {answer[:800]}"]

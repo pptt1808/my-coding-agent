@@ -68,7 +68,31 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
     reader = _read_char or _msvcrt.getwch
     has_pending = _has_pending if _has_pending is not None else _msvcrt.kbhit
     chars: list[str] = []
-    skip_lf = False  # the '\n' half of a '\r\n' paste already handled by '\r'
+
+    # one-char lookahead so we can decide on a '\r' whether a '\n' follows (a
+    # paste CRLF) vs. this is a real Enter (no following char).
+    lookahead: list[str] = []
+
+    def _next_char() -> str:
+        if lookahead:
+            return lookahead.pop(0)
+        return reader()
+
+    def _peek_char() -> str | None:
+        """Return the next input char without consuming it, or None if the input
+        is empty (a real Enter follows). During a paste a CRLF pair's '\n' lands
+        right after '\r', so we briefly wait for it instead of trusting a single
+        instant kbhit() (which can flicker to False mid-paste)."""
+        if not lookahead:
+            import time as _time
+            for _ in range(6):  # up to ~12ms for the CRLF's '\n' to arrive
+                if has_pending():
+                    break
+                _time.sleep(0.002)
+            if not has_pending():
+                return None
+            lookahead.append(reader())
+        return lookahead[0]
 
     # screen state: how many lines the completion menu occupied last redraw
     menu_lines = 0
@@ -119,30 +143,21 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
     _render()
 
     while True:
-        ch = reader()
+        ch = _next_char()
         if ch == "\n":
             # A lone '\n' is a paste line break, never a submit: collect it.
-            # But if it follows a handled '\r' ('\r\n'), swallow it once.
-            if skip_lf:
-                skip_lf = False
-            else:
-                chars.append("\n")
-                _render()
+            chars.append("\n")
+            _render()
             continue
         if ch == "\r":
-            if skip_lf:
-                # trailing '\n' of a '\r\n' pair already swallowed; this '\r'
-                # is the paste's CR and, if more text follows, keep collecting.
-                skip_lf = False
-            if has_pending():
-                # More input is still queued (paste burst) -> this '\r' is a
-                # line break, not a submit. Collect a '\n'; if the very next
-                # char is '\n' (the '\r\n' pair) swallow it next loop.
+            # A '\r' that is immediately followed by a '\n' is a paste CRLF line
+            # break (not a submit): collect a single '\n'.
+            if _peek_char() == "\n":
+                lookahead.pop(0)
                 chars.append("\n")
                 _render()
-                skip_lf = True
                 continue
-            # Buffer empty -> a real Enter. Submit the collected input line.
+            # Otherwise this is a real Enter. Submit the collected input line.
             # The cursor is already on the input line; clear it + the menu below.
             sys.stdout.write("\r\x1b[J")
             line = "".join(chars)

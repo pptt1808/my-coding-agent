@@ -373,3 +373,24 @@ def test_pm_step_outside_pm_mode_is_rejected(tmp_path):
     out = sess.handle("/vision")
     assert any("not in PM mode" in line for line in out)
     assert sess._pm_mode is False
+
+
+def test_pm_step_streams_output(tmp_path, capsys):
+    """`/vision` with streaming on should call on_delta as text arrives (R11)."""
+    class StreamLLM:
+        def stream_complete(self, _sys, _messages, _tools=None, on_delta=None):
+            pieces = ("# DEMO_SPEC.md\n", "## Vision\n", "x")
+            for p in pieces:
+                if on_delta:
+                    on_delta(p)
+            return LLMResult(text="".join(pieces), usage={"total_tokens": 1})
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="# DEMO_SPEC.md\n## Vision\nx", usage={"total_tokens": 1})
+
+    fake = StreamLLM()
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake, stream=True)
+    sess.handle("/pm")
+    out = sess.handle("/vision")
+    assert out == []              # already streamed live -> no duplicate print
+    captured = capsys.readouterr().out
+    assert "# DEMO_SPEC.md" in captured  # the deltas were printed as they arrived

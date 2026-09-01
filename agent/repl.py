@@ -268,8 +268,17 @@ class ReplSession:
             if not self._pm_mode:
                 return [f"[pm:{cmd[1:]}] not in PM mode — run /pm first."]
             from .pm import pm_step
-            self._pm_messages, out = pm_step(self._agent, self._pm_messages,
-                                             self._config.workdir, cmd[1:], arg.strip())
+            streamed: list[str] = []
+
+            def _on_delta(text: str) -> None:
+                streamed.append(text)
+                print(text, end="", flush=True)
+
+            self._pm_messages, out = pm_step(
+                self._agent, self._pm_messages, self._config.workdir, cmd[1:],
+                arg.strip(), stream=self._stream, on_delta=_on_delta)
+            if streamed:
+                return []  # already streamed live (R11: no duplicate)
             return out
         if cmd == "/exit":
             self.running = False
