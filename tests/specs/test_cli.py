@@ -53,74 +53,65 @@ def _burst_pending(chars):
 
 
 def test_r15_slash_first_char_opens_menu_without_enter(tty, capsys):
-    seen = []
-    # '/' as first char -> menu; then type 'status' + Enter
-    def _on_slash():
-        seen.append("MENU")
-        print("MENU")
+    """'/' as the first char echoes the slash and draws a completion menu; typing
+    more completes the command, and Enter submits it."""
+    calls = []
+    def _on_slash(prefix=""):
+        calls.append(prefix)
+        return ["/" + c for c in ("status", "stats") if c.startswith(prefix)]
 
     line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
                                      _read_char=_reader(["/", "s", "t", "a", "t", "u", "s", "\r"]))
-    assert seen == ["MENU"]  # menu opened immediately on '/'
-    assert line == "/status"  # leading '/' re-added, rest typed normally
-    assert "MENU" in capsys.readouterr().out
+    assert calls                       # on_slash was consulted for candidates
+    assert line == "/status"           # leading '/' kept, rest typed normally
+    out = capsys.readouterr().out
+    assert "❯ /" in out                # the slash is echoed (visible input)
 
 
-def test_r15e_slash_menu_then_full_command_no_double_slash(tty, capsys):
+def test_r15e_slash_menu_then_full_command_no_double_slash(tty):
     """Regression: '/' opens the menu, then the user types the FULL command with
     its own leading '/' (the common `/pm` case). Must NOT produce '//pm'."""
-    seen = []
-    def _on_slash():
-        seen.append("MENU")
-        print("MENU")
+    def _on_slash(prefix=""):
+        return ["/" + c for c in ("pm", "permissions") if c.startswith(prefix)]
     line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
                                      _read_char=_reader(["/", "/", "p", "m", "\r"]))
-    assert seen == ["MENU"]          # menu still opened on first '/'
-    assert line == "/pm"             # exactly one leading slash, not "//pm"
+    assert line == "/pm"               # exactly one leading slash, not "//pm"
 
 
-def test_r15f_slash_menu_then_suffix_no_extra_slash(tty, capsys):
-    """After the menu, typing only the suffix (no extra '/') still auto-prepends."""
-    seen = []
-    def _on_slash():
-        seen.append("MENU")
-        print("MENU")
+def test_r15f_slash_menu_then_suffix_no_extra_slash(tty):
+    """After the menu, typing only the suffix (no extra '/') still yields /pm."""
+    def _on_slash(prefix=""):
+        return ["/" + c for c in ("pm",) if c.startswith(prefix)]
     line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
                                      _read_char=_reader(["/", "p", "m", "\r"]))
-    assert seen == ["MENU"]
     assert line == "/pm"
 
 
 def test_r15l_backspace_collapses_menu(tty, capsys):
-    """Regression: after '/' opens the menu, Backspace deletes the '/' and the
-    menu must collapse (erased via ANSI up+clear) so the user can back out of
-    the menu and keep typing a normal (non-command) message."""
-    seen = []
-    def _on_slash():
-        seen.append("MENU")
-        print("MENU")
-    # '/', backspace (deletes '/', collapses menu), then type 'hello' + Enter
+    """Regression: after '/' renders the menu, Backspace deletes the '/' and the
+    menu disappears (the editor redraws with no candidates), so the user can keep
+    typing a normal (non-command) message."""
+    calls = []
+    def _on_slash(prefix=""):
+        calls.append(prefix)
+        return ["/" + c for c in ("status",) if c.startswith(prefix)]
+    # '/', backspace (deletes '/', menu closes), then 'hello' + Enter
     line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
                                      _read_char=_reader(["/", "\x08", "h", "e", "l", "l", "o", "\r"]))
-    assert seen == ["MENU"]                 # menu opened then collapsed
-    # the ANSI erase (moves up menu_lines + clear-to-end) was emitted
     out = capsys.readouterr().out
-    assert "\x1b[J" in out                  # clear-to-end-of-screen on collapse
-    assert line == "hello"                  # the '/' is gone -> a normal message
+    assert "❯ /" in out                # the slash was rendered while present
+    assert "\x1b[J" in out             # a redraw erased the old content/ menu
+    assert line == "hello"             # '/' is gone -> a NORMAL message submits
 
 
-def test_r15m_backspace_after_full_command_collapses_menu(tty):
-    """Typing '/pm' then backspacing the final '/' back to just '/' collapses the
-    menu correctly and leaves only the '/' (menu stays open)."""
-    seen = []
-    def _on_slash():
-        seen.append("MENU")
-        print("MENU")
+def test_r15m_backspace_after_command_keeps_slash(tty):
+    """Typing '/pm' then backspacing 'm' keeps the '/' (menu still active)."""
+    def _on_slash(prefix=""):
+        return ["/" + c for c in ("pm",) if c.startswith(prefix)]
     # '/','p','m', backspace (removes 'm'), Enter -> submit "/p"
     line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
                                      _read_char=_reader(["/", "p", "m", "\x08", "\r"]))
-    assert seen == ["MENU"]
-    assert line == "/p"                     # m was backspaced, slash retained
+    assert line == "/p"                # m was backspaced; '/' retained (menu on)
 
 
 def test_r15b_normal_line_no_menu(tty, capsys):

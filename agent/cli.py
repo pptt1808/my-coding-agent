@@ -25,19 +25,27 @@ def apply_workdir(cfg: Config, workdir: str | None) -> Config:
 def read_interactive_line(prompt: str, on_slash, _read_char=None,
                           erase_on_enter: bool = False,
                           _has_pending=None) -> str | None:
-    """Interactive line editor (Windows TTY).
+    """Interactive line editor (Windows TTY) — prompts + slash-completion menu.
 
-    Typing '/' as the FIRST character shows a command menu immediately (no Enter
-    required) — like OpenCode/Claude Code. The '/' is echoed as a REAL character
-    in the input: Backspace deletes it and the menu collapses, and you keep
-    typing the command (e.g. "/pm") after it — the leading '/' is re-added on
-    submit. Falls back to plain `input()` on non-Windows / non-TTY stdin.
-    Returns the line, or None on EOF.
+    This is a full "redraw" editor like prompt_toolkit/OpenCode, not a print-and-
+    leave one. We keep a small screen state (the edited text and whether a
+    completion menu is showing) and after EVERY keypress re-render from a known
+    origin, so the menu can grow/shrink/close without leaving stale lines behind.
 
-    `on_slash()` is called once, when the menu first opens, and must return the
-    number of lines it printed (so the editor can erase it when the menu is
-    collapsed by Backspace or by a submit). The collapse is handled entirely
-    inside this editor, so `on_slash` only ever runs for the open case.
+    TYPING '/': '/' is echoed as a real input character, and a completion menu of
+    slash commands appears UNDER the input line. The menu is a candidate list
+    (not a one-shot print): it appears while '/' is the leading char and
+    disappears the moment '/' is backspaced (or the line is submitted), because
+    each redraw only draws the menu when '/' is present. This is how TUI menus
+    stay deletable — the editor owns the whole screen it drew.
+
+    `on_slash(text)` is called on every redraw while the menu is active and
+    returns the candidate commands to display (a list of strings). When '/' is
+    removed or the line submitted it is not called with an active menu, so the
+    caller can skip its work; it may also signal "no menu" by returning [].
+
+    Falls back to plain `input()` on non-Windows / non-TTY stdin. Returns the
+    line, or None on EOF.
 
     PASTE HANDLING: a multi-line paste (e.g. a task doc copied out of TASK.md)
     must NOT be split into one submission per line. When the user hits Enter the
@@ -60,31 +68,48 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
     reader = _read_char or _msvcrt.getwch
     has_pending = _has_pending if _has_pending is not None else _msvcrt.kbhit
     chars: list[str] = []
-    menu_open = False
-    menu_lines = 0
     skip_lf = False  # the '\n' half of a '\r\n' paste already handled by '\r'
-    sys.stdout.write(prompt)
-    sys.stdout.flush()
 
-    def _collapse_menu() -> None:
-        """Erase the menu that was printed under the input line (on backspace)."""
-        if not menu_open:
-            return
-        # move the cursor up past the menu lines (if known) and clear the
-        # remainder of the screen so the menu disappears.
+    # screen state: how many lines the completion menu occupied last redraw
+    menu_lines = 0
+    menu_active = False
+
+    def _menu_candidates() -> list[str]:
+        """Current completion candidates, or [] when the menu shouldn't show."""
+        text = "".join(chars)
+        if not text.startswith("/") or "/" not in text[:1]:
+            return []
+        try:
+            cands = on_slash(text[1:])  # caller segments on the substring after '/'
+            return list(cands or [])
+        except TypeError:
+            return []  # on_slash() is a no-arg legacy callback
+
+    def _render() -> None:
+        """Redraw the prompt line + completion menu from a stable origin."""
+        nonlocal menu_lines, menu_active
+        # 1. roll back to the beginning of the block we drew last time
         if menu_lines > 0:
             sys.stdout.write(f"\x1b[{menu_lines}A")
-        sys.stdout.write("\x1b[J")
+        # 2. clear everything from the cursor to the end (erases stale menu)
+        sys.stdout.write("\r\x1b[J")
+        # 3. draw the prompt + edited text
+        text = "".join(chars)
+        sys.stdout.write(prompt + text)
+        # 4. if a menu is active, draw it under the input line and remember rows
+        cands = _menu_candidates()
+        if cands:
+            menu_active = True
+            sys.stdout.write("\n")
+            sys.stdout.write("\n".join(f"  {c}" for c in cands))
+            menu_lines = 1 + len(cands)
+        else:
+            menu_active = False
+            menu_lines = 0
         sys.stdout.flush()
 
-    def _open_menu() -> None:
-        """Print the menu and remember how many lines it occupied."""
-        nonlocal menu_open, menu_lines
-        menu_open = True
-        try:
-            menu_lines = int(on_slash() or 0)
-        except TypeError:
-            menu_lines = 0  # on_slash() didn't return a line count
+    # initial render
+    _render()
 
     while True:
         ch = reader()
@@ -95,8 +120,7 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
                 skip_lf = False
             else:
                 chars.append("\n")
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                _render()
             continue
         if ch == "\r":
             if skip_lf:
@@ -108,15 +132,13 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
                 # line break, not a submit. Collect a '\n'; if the very next
                 # char is '\n' (the '\r\n' pair) swallow it next loop.
                 chars.append("\n")
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                _render()
                 skip_lf = True
                 continue
             # Buffer empty -> a real Enter. Submit the collected input line.
-            if menu_open:
-                # erase the open menu before the result line is printed
-                _collapse_menu()
-                menu_open = False
+            # Roll back the whole block so the menu doesn't linger.
+            if menu_lines > 0:
+                sys.stdout.write(f"\x1b[{menu_lines}A\x1b[J")
             line = "".join(chars)
             if erase_on_enter and not line.startswith("/") and "\n" not in line:
                 # The caller re-renders this as a chat bubble in the SAME spot;
@@ -132,29 +154,21 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
             raise KeyboardInterrupt
         if ch in ("\x08", "\x7f"):  # Backspace
             if chars:
-                removed = chars.pop()
-                if removed == "/" and menu_open:
-                    # deleting the leading '/' collapses the command menu
-                    _collapse_menu()
-                    menu_open = False
-                sys.stdout.write("\b \b")
-                sys.stdout.flush()
+                chars.pop()
+                _render()  # re-draw; '/' removed -> menu closes automatically
             continue
-        if not chars and not menu_open and ch == "/":
-            # First char is '/': echo it AND pop the menu immediately.
+        if not chars and ch == "/":
+            # First char is '/': echo it; the redraw shows the completion menu.
             chars.append("/")
-            sys.stdout.write("/")
-            sys.stdout.flush()
-            _open_menu()
+            _render()
             continue
-        if menu_open and chars == ["/"] and ch == "/":
+        if menu_active and chars == ["/"] and ch == "/":
             # The '/' that opened the menu is already the command slash; typing
             # another '/' (e.g. "/pm") must NOT produce a double slash. Keep the
             # one we have; the rest of the command is typed after it.
             continue
         chars.append(ch)
-        sys.stdout.write(ch)
-        sys.stdout.flush()
+        _render()
     return None
 
 
@@ -204,7 +218,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _cmd_chat(args: argparse.Namespace) -> int:
     cfg = apply_workdir(Config.from_env(), args.workdir)
-    from .repl import C_PROMPT, C_RESET, HELP, ReplSession
+    from .repl import C_PROMPT, C_RESET, COMMANDS, ReplSession
 
     if os.name == "nt":
         os.system("")  # enable ANSI/VT output in Windows cmd/terminal
@@ -224,11 +238,14 @@ def _cmd_chat(args: argparse.Namespace) -> int:
                 # Windows interactive: typing '/' as the first char opens the menu.
                 # erase_on_enter: the caller re-renders the line as a chat bubble
                 # in-place, so erase the echoed prompt line (input shown once).
-                def _on_slash():
-                    # print the menu; return its line count so the editor can
-                    # erase it when the menu is collapsed (Backspace/submit).
-                    print(HELP, flush=True)
-                    return len(HELP.splitlines())
+                def _on_slash(prefix: str = "") -> list[str]:
+                    # Completion candidates for the substring after '/' (e.g.
+                    # '/p' -> 'pm', 'permissions'...); empty prefix = all.
+                    import re as _re
+                    p = (prefix or "").lower()
+                    cands = [c for c in COMMANDS if c.startswith(p)]
+                    # show them as '/' + name so "/p" lists "/pm", "/permissions"
+                    return ["/" + c for c in cands]
 
                 line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=_on_slash,
                                              erase_on_enter=True)
