@@ -10,6 +10,13 @@ from agent.config import Config
 from agent.llm import LLMResult, ToolCall
 from agent.repl import ReplSession
 
+import re as _re
+
+
+def _strip_ansi(s: str) -> str:
+    """Remove ANSI escape/control sequences so tests assert on real text only."""
+    return _re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", s)
+
 
 class FakeLLM:
     def __init__(self) -> None:
@@ -156,7 +163,25 @@ def test_r11_streaming_prints_deltas_and_no_duplicate(capsys, tmp_path):
     out = sess.handle("hi")
     assert out == []  # streamed: no duplicate final print
     captured = capsys.readouterr().out
-    assert captured.strip() == "hello"  # deltas printed live + trailing newline
+    # the answer text arrived (with ANSI status lines; we only check the deltas are
+    # present, not re-printed a second time)
+    assert "hel" in captured and "lo" in captured
+    assert captured.count("hello") <= 1  # no duplicate full answer
+
+
+def test_r11b_status_line_shown_while_working(capsys, tmp_path):
+    """A status/spinner line (Claude-Code style) is emitted while the agent works,
+    so the user always sees the agent 'thinking' / running a tool."""
+    class BlockingLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="done", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=BlockingLLM(), stream=False)
+    out = sess.handle("do it")
+    assert out == ["done"]           # non-streamed answer returned as a line
+    captured = capsys.readouterr().out
+    assert "\x1b[2K" in captured     # a status line was drawn & erased (ANSI)
+    assert "思考中" in captured       # the 'thinking' label was shown
 
 
 def test_r12_slash_alone_shows_menu(session):

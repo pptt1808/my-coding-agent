@@ -20,6 +20,7 @@ from .diff import collect_diff, snapshot_dir
 from .llm import LLMClient
 from .loop import CodingAgent
 from .session import Session, list_sessions, load_session, new_session_id, save_session
+from .spinner import StatusSpinner
 from eval.judge import Judge
 
 # directories excluded from undo snapshots (cache/noise, not user content)
@@ -120,6 +121,8 @@ class ReplSession:
         self._trace = trace           # reused when /resume rebuilds the agent
         self._tools = tools           # reused when /resume rebuilds the agent
         self._agent = CodingAgent(config, llm=llm, model=model, trace=trace, tools=tools)
+        self._spinner = StatusSpinner()  # Claude-Code-style status line
+        self._poll: list[str] = []        # buffer for streamed token text
         self._messages: list[dict[str, Any]] = []
         self._todos: list[str] = []
         self._snapshot = snapshot_dir(self._config.workdir)  # for /review
@@ -169,23 +172,40 @@ class ReplSession:
         # snapshot the workdir BEFORE the turn so /undo can revert the agent's edits
         self._before_turn_snapshot()
         self._messages.append({"role": "user", "content": line})
+
+        # Wire the agent's on_status to our spinner so the terminal always shows
+        # something while the agent "thinks" / runs tools (Claude-Code style).
+        spinner = self._spinner
+
+        def _on_status(label: str) -> None:
+            if label:
+                spinner.start(label)   # starts the tick thread if not already running
+                spinner.update(label)  # refresh the label immediately
+            else:
+                spinner.clear()
+
+        self._agent._on_status = _on_status
+
         try:
             if self._stream:
                 streamed: list[str] = []
 
                 def _on_delta(text: str) -> None:
                     streamed.append(text)
+                    spinner.clear()          # real output replaces the status line
                     print(text, end="", flush=True)
 
                 answer, self._messages = self._agent.run_turn(
                     self._messages, extra_system=self._task_block(), stream=True, on_delta=_on_delta,
                 )
+                spinner.clear()
                 if streamed:
                     print()  # newline after the streamed answer
                     return []  # already printed live (R11: no duplicate)
                 return [answer]
             answer, self._messages = self._agent.run_turn(
                 self._messages, extra_system=self._task_block())
+            spinner.clear()
             return [answer]
         except KeyboardInterrupt:
             # Ctrl+C mid-turn: discard partial output and restore the conversation.

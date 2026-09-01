@@ -50,7 +50,8 @@ class CodingAgent:
 
     def __init__(self, config: Config, llm: LLMClient | None = None, model: str | None = None,
                  trace: bool = False, tools: list[str] | None = None,
-                 system_prompt: str | None = None) -> None:
+                 system_prompt: str | None = None,
+                 on_status: Any | None = None) -> None:
         self._config = config
         self._workdir = config.workdir
         self._model = model or config.model
@@ -58,6 +59,7 @@ class CodingAgent:
         self._trace = trace
         self._allowed_tools = set(tools) if tools else None
         self._system_prompt_override = system_prompt  # e.g. the read-only explore prompt
+        self._on_status = on_status  # optional callback for a status/spinner line
         self.total_tokens: int = 0
         self.input_tokens: int = 0
         self.output_tokens: int = 0
@@ -90,6 +92,19 @@ class CodingAgent:
     def _log(self, msg: str) -> None:
         if self._trace:
             print(f"[trace] {msg}", flush=True)
+
+    def _status(self, msg: str) -> None:
+        """Report a human-readable liveness status (spinner/status line).
+
+        The REPL substitutes this to drive a Claude-Code-style status line; the
+        callback is optional and must tolerate being called at any point in the
+        loop. `msg` is a short label, e.g. "思考中", "读取 report.py", "done".
+        """
+        if self._on_status is not None:
+            try:
+                self._on_status(msg)
+            except Exception:
+                pass  # a status callback must never break the loop
 
     def run(self, task: str, stream: bool = False, on_delta: Any | None = None,
             extra_system: str = "") -> str:
@@ -159,6 +174,7 @@ class CodingAgent:
 
         while not terminator.should_stop(state, time.monotonic() - start):
             state.steps += 1
+            self._status("思考中")
             if stream and hasattr(self._llm, "stream_complete"):
                 result = self._llm.stream_complete(
                     system_prompt, history, registry.tool_schemas(self._allowed_tools),
@@ -198,6 +214,7 @@ class CodingAgent:
                 history.append({"role": "assistant", "content": result.text})
                 self._log(f"final answer: {result.text[:200]!r}")
                 self.steps += state.steps
+                self._status("")  # clear the status line before returning
                 return result.text, history
 
             self._log("tool calls: " + ", ".join(
@@ -220,6 +237,7 @@ class CodingAgent:
                 history.append(assistant_msg)
                 for tc in native_calls:
                     state.tool_calls += 1
+                    self._status(f"执行 {tc.name}")
                     output = self._dispatch(state, tc, last_tool)
                     last_tool = tc.name
                     history.append({"role": "tool", "tool_call_id": tc.id, "content": output})
@@ -228,6 +246,7 @@ class CodingAgent:
                 assert fallback_call is not None
                 history.append({"role": "assistant", "content": result.text})
                 state.tool_calls += 1
+                self._status(f"执行 {fallback_call.name}")
                 output = self._dispatch(state, fallback_call, last_tool)
                 last_tool = fallback_call.name
                 history.append({"role": "user", "content": f"[tool:{fallback_call.name}]\n{output}"})
