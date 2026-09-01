@@ -27,11 +27,17 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
                           _has_pending=None) -> str | None:
     """Interactive line editor (Windows TTY).
 
-    Typing '/' as the FIRST character opens the command menu immediately (no
-    Enter required) — like OpenCode/Claude Code. Subsequent typed characters
-    complete the command, and Enter sends it (the leading '/' is re-added).
-    Falls back to plain `input()` on non-Windows / non-TTY stdin.
+    Typing '/' as the FIRST character shows a command menu immediately (no Enter
+    required) — like OpenCode/Claude Code. The '/' is echoed as a REAL character
+    in the input: Backspace deletes it and the menu collapses, and you keep
+    typing the command (e.g. "/pm") after it — the leading '/' is re-added on
+    submit. Falls back to plain `input()` on non-Windows / non-TTY stdin.
     Returns the line, or None on EOF.
+
+    `on_slash()` is called once, when the menu first opens, and must return the
+    number of lines it printed (so the editor can erase it when the menu is
+    collapsed by Backspace or by a submit). The collapse is handled entirely
+    inside this editor, so `on_slash` only ever runs for the open case.
 
     PASTE HANDLING: a multi-line paste (e.g. a task doc copied out of TASK.md)
     must NOT be split into one submission per line. When the user hits Enter the
@@ -54,10 +60,32 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
     reader = _read_char or _msvcrt.getwch
     has_pending = _has_pending if _has_pending is not None else _msvcrt.kbhit
     chars: list[str] = []
-    slash_seen = False
+    menu_open = False
+    menu_lines = 0
     skip_lf = False  # the '\n' half of a '\r\n' paste already handled by '\r'
     sys.stdout.write(prompt)
     sys.stdout.flush()
+
+    def _collapse_menu() -> None:
+        """Erase the menu that was printed under the input line (on backspace)."""
+        if not menu_open:
+            return
+        # move the cursor up past the menu lines (if known) and clear the
+        # remainder of the screen so the menu disappears.
+        if menu_lines > 0:
+            sys.stdout.write(f"\x1b[{menu_lines}A")
+        sys.stdout.write("\x1b[J")
+        sys.stdout.flush()
+
+    def _open_menu() -> None:
+        """Print the menu and remember how many lines it occupied."""
+        nonlocal menu_open, menu_lines
+        menu_open = True
+        try:
+            menu_lines = int(on_slash() or 0)
+        except TypeError:
+            menu_lines = 0  # on_slash() didn't return a line count
+
     while True:
         ch = reader()
         if ch == "\n":
@@ -85,7 +113,11 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
                 skip_lf = True
                 continue
             # Buffer empty -> a real Enter. Submit the collected input line.
-            line = ("/" if slash_seen else "") + "".join(chars)
+            if menu_open:
+                # erase the open menu before the result line is printed
+                _collapse_menu()
+                menu_open = False
+            line = "".join(chars)
             if erase_on_enter and not line.startswith("/") and "\n" not in line:
                 # The caller re-renders this as a chat bubble in the SAME spot;
                 # erase the echoed prompt line so the input is shown only ONCE
@@ -100,26 +132,25 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
             raise KeyboardInterrupt
         if ch in ("\x08", "\x7f"):  # Backspace
             if chars:
-                chars.pop()
+                removed = chars.pop()
+                if removed == "/" and menu_open:
+                    # deleting the leading '/' collapses the command menu
+                    _collapse_menu()
+                    menu_open = False
                 sys.stdout.write("\b \b")
                 sys.stdout.flush()
             continue
-        if not chars and not slash_seen and ch == "/":
-            slash_seen = True
-            sys.stdout.write("\n")
+        if not chars and not menu_open and ch == "/":
+            # First char is '/': echo it AND pop the menu immediately.
+            chars.append("/")
+            sys.stdout.write("/")
             sys.stdout.flush()
-            on_slash()  # print the command menu immediately
-            sys.stdout.write(prompt)
-            sys.stdout.flush()
+            _open_menu()
             continue
-        # Menu already opened (leading '/' was consumed) but the user typed
-        # another '/' — e.g. "/pm" -> "/" then "/pm". That '/' is the real
-        # command slash, so stop auto-prepending to avoid "//pm".
-        if slash_seen and not chars and ch == "/":
-            slash_seen = False
-            chars.append(ch)
-            sys.stdout.write(ch)
-            sys.stdout.flush()
+        if menu_open and chars == ["/"] and ch == "/":
+            # The '/' that opened the menu is already the command slash; typing
+            # another '/' (e.g. "/pm") must NOT produce a double slash. Keep the
+            # one we have; the rest of the command is typed after it.
             continue
         chars.append(ch)
         sys.stdout.write(ch)
@@ -193,7 +224,13 @@ def _cmd_chat(args: argparse.Namespace) -> int:
                 # Windows interactive: typing '/' as the first char opens the menu.
                 # erase_on_enter: the caller re-renders the line as a chat bubble
                 # in-place, so erase the echoed prompt line (input shown once).
-                line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=lambda: print(HELP),
+                def _on_slash():
+                    # print the menu; return its line count so the editor can
+                    # erase it when the menu is collapsed (Backspace/submit).
+                    print(HELP, flush=True)
+                    return len(HELP.splitlines())
+
+                line = read_interactive_line(f"{C_PROMPT}❯{C_RESET} ", on_slash=_on_slash,
                                              erase_on_enter=True)
                 if line is None:
                     break

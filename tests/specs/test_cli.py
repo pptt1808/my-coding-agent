@@ -91,6 +91,38 @@ def test_r15f_slash_menu_then_suffix_no_extra_slash(tty, capsys):
     assert line == "/pm"
 
 
+def test_r15l_backspace_collapses_menu(tty, capsys):
+    """Regression: after '/' opens the menu, Backspace deletes the '/' and the
+    menu must collapse (erased via ANSI up+clear) so the user can back out of
+    the menu and keep typing a normal (non-command) message."""
+    seen = []
+    def _on_slash():
+        seen.append("MENU")
+        print("MENU")
+    # '/', backspace (deletes '/', collapses menu), then type 'hello' + Enter
+    line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
+                                     _read_char=_reader(["/", "\x08", "h", "e", "l", "l", "o", "\r"]))
+    assert seen == ["MENU"]                 # menu opened then collapsed
+    # the ANSI erase (moves up menu_lines + clear-to-end) was emitted
+    out = capsys.readouterr().out
+    assert "\x1b[J" in out                  # clear-to-end-of-screen on collapse
+    assert line == "hello"                  # the '/' is gone -> a normal message
+
+
+def test_r15m_backspace_after_full_command_collapses_menu(tty):
+    """Typing '/pm' then backspacing the final '/' back to just '/' collapses the
+    menu correctly and leaves only the '/' (menu stays open)."""
+    seen = []
+    def _on_slash():
+        seen.append("MENU")
+        print("MENU")
+    # '/','p','m', backspace (removes 'm'), Enter -> submit "/p"
+    line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
+                                     _read_char=_reader(["/", "p", "m", "\x08", "\r"]))
+    assert seen == ["MENU"]
+    assert line == "/p"                     # m was backspaced, slash retained
+
+
 def test_r15b_normal_line_no_menu(tty, capsys):
     seen = []
     line = cli.read_interactive_line("❯ ", on_slash=lambda: seen.append("MENU"),
