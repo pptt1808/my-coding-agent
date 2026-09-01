@@ -85,6 +85,14 @@ def test_l4b_system_prompt_mentions_platform(workdir):
     assert "heredoc" in prompt
 
 
+def test_l4c_system_prompt_defaults_to_chinese(workdir):
+    """The agent must reply in Chinese by default (prose Chinese, code English)."""
+    prompt = build_system_prompt(str(workdir))
+    assert "Chinese" in prompt          # language directive present
+    assert "中文" in prompt             # Chinese is the reply language
+    assert "do not translate" in prompt # code/identifiers stay as-is
+
+
 def test_l5_tool_error_does_not_crash_loop(workdir):
     fake = FakeLLM([
         LLMResult(text="", tool_calls=[_read_tool("missing.txt")]),
