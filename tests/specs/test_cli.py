@@ -68,6 +68,20 @@ def test_r15_slash_first_char_opens_menu_without_enter(tty, capsys):
     assert "❯ /" in out                # the slash is echoed (visible input)
 
 
+def test_r15n_cursor_returns_to_input_line_after_menu(tty, capsys):
+    """Regression: after drawing the completion menu, the cursor is moved back
+    to the input line (right after the text), NOT left on the menu's tail."""
+    def _on_slash(prefix=""):
+        return ["/" + c for c in ("status", "stats") if c.startswith(prefix)]
+    # '/' opens the menu: input line + 2 candidates = 3 rows; cursor must return
+    # to the input line, i.e. move up menu_lines-1 = 2 rows.
+    line = cli.read_interactive_line("❯ ", on_slash=_on_slash,
+                                     _read_char=_reader(["/", "\r"]))
+    out = capsys.readouterr().out
+    assert "\x1b[2A" in out            # cursor moved back up to the input line
+    assert line == "/"                 # submitted the bare '/' command
+
+
 def test_r15e_slash_menu_then_full_command_no_double_slash(tty):
     """Regression: '/' opens the menu, then the user types the FULL command with
     its own leading '/' (the common `/pm` case). Must NOT produce '//pm'."""

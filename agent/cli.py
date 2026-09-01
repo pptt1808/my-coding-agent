@@ -86,23 +86,30 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
             return []  # on_slash() is a no-arg legacy callback
 
     def _render() -> None:
-        """Redraw the prompt line + completion menu from a stable origin."""
+        """Redraw the prompt line + completion menu from a stable origin.
+
+        The cursor is always left at the END of the input line after a render
+        (right after the text), so typing/backspace edits at the prompt, never on
+        the menu. Since the menu sits BELOW the input line, a '\r\x1b[J'
+        (clear-from-cursor-to-end) wipes any previously drawn menu.
+        """
         nonlocal menu_lines, menu_active
-        # 1. roll back to the beginning of the block we drew last time
-        if menu_lines > 0:
-            sys.stdout.write(f"\x1b[{menu_lines}A")
-        # 2. clear everything from the cursor to the end (erases stale menu)
+        # 1. back to the start of the input line and clear it + everything below
+        #    (this erases the previous frame's menu if one was drawn)
         sys.stdout.write("\r\x1b[J")
-        # 3. draw the prompt + edited text
+        # 2. draw the prompt + edited text
         text = "".join(chars)
         sys.stdout.write(prompt + text)
-        # 4. if a menu is active, draw it under the input line and remember rows
+        # 3. if a menu is active, draw it under the input line; then return the
+        #    cursor to the input line so the next keystroke edits right after '/'
         cands = _menu_candidates()
         if cands:
             menu_active = True
             sys.stdout.write("\n")
             sys.stdout.write("\n".join(f"  {c}" for c in cands))
             menu_lines = 1 + len(cands)
+            if menu_lines > 1:
+                sys.stdout.write(f"\x1b[{menu_lines - 1}A")
         else:
             menu_active = False
             menu_lines = 0
@@ -136,9 +143,8 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
                 skip_lf = True
                 continue
             # Buffer empty -> a real Enter. Submit the collected input line.
-            # Roll back the whole block so the menu doesn't linger.
-            if menu_lines > 0:
-                sys.stdout.write(f"\x1b[{menu_lines}A\x1b[J")
+            # The cursor is already on the input line; clear it + the menu below.
+            sys.stdout.write("\r\x1b[J")
             line = "".join(chars)
             if erase_on_enter and not line.startswith("/") and "\n" not in line:
                 # The caller re-renders this as a chat bubble in the SAME spot;
