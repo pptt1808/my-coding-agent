@@ -17,6 +17,8 @@ def tty(monkeypatch):
     """Pretend stdin is an interactive Windows console."""
     monkeypatch.setattr("os.name", "nt")
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    # Deterministic: no pending buffered input, so a '\r' is a real Enter/submit.
+    monkeypatch.setattr("msvcrt.kbhit", lambda: False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
 
 
@@ -29,6 +31,25 @@ def _reader(chars):
         except StopIteration:
             return "\r"  # default to Enter at end
     return read
+
+
+def _burst_pending(chars):
+    """Simulate a paste burst: has_pending() is True while more chars are still
+    queued (mid-paste), and False once the final Enter is reached."""
+    state = {"i": 0}
+
+    def read():
+        if state["i"] >= len(chars):
+            return "\r"  # buffer empty -> a real Enter, so this submits
+        ch = chars[state["i"]]
+        state["i"] += 1
+        return ch
+
+    def pending():
+        # True while the cursor is not yet past the last delivered paste char
+        return state["i"] < len(chars)
+
+    return read, pending
 
 
 def test_r15_slash_first_char_opens_menu_without_enter(tty, capsys):
@@ -113,3 +134,30 @@ def test_r15h_erase_on_enter_command_not_erased(tty, capsys):
     out = capsys.readouterr().out
     assert "\x1b[2K" not in out  # command echo is NOT erased
     assert out.endswith("\n")    # advanced to a new line
+
+
+def test_r15i_paste_lf_multiline_is_one_input(tty):
+    """Regression: pasting a multi-line doc (LF line endings, e.g. from TASK.md)
+    must be collected as ONE submission, not one line per newline."""
+    read, pending = _burst_pending(["t", "a", "s", "k", "\n", "l", "i", "n", "e", "2", "\r"])
+    line = cli.read_interactive_line("❯ ", on_slash=lambda: None,
+                                     _read_char=read, _has_pending=pending)
+    assert line == "task\nline2"  # a single input with an embedded newline
+
+
+def test_r15j_paste_crlf_multiline_is_one_input(tty):
+    """Regression: Windows clipboards paste '\r\n' line endings; those must also
+    collapse to ONE submission with a single '\n' per line break."""
+    read, pending = _burst_pending(["a", "b", "c", "\r", "\n", "d", "e", "f", "\r"])
+    line = cli.read_interactive_line("❯ ", on_slash=lambda: None,
+                                     _read_char=read, _has_pending=pending)
+    assert line == "abc\ndef"  # '\r\n' became a single '\n'
+
+
+def test_r15k_lone_lf_never_submits_then_enter_submits(tty):
+    """A bare '\n' (no following '\r') is collected as part of the input, and the
+    input is only submitted when a real Enter arrives (buffer empty)."""
+    read, pending = _burst_pending(["x", "y", "\n", "\r"])
+    line = cli.read_interactive_line("❯ ", on_slash=lambda: None,
+                                     _read_char=read, _has_pending=pending)
+    assert line == "xy\n"  # '\n' was kept; the final '\r' submitted

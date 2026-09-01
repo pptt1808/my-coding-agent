@@ -152,7 +152,9 @@ class ReplSession:
     def _turn(self, line: str) -> list[str]:
         # echo the input as a chat bubble; the interactive reader already erased
         # the echoed prompt line, so this bubble occupies that spot (shown once).
-        if self._echo_input:
+        # For a multi-line PASTE the reader keeps the pasted lines visible, so
+        # we must NOT render a bubble too (would show the text twice).
+        if self._echo_input and "\n" not in line:
             print(f"{C_CYAN}{render_chat_box(line)}{C_RESET}", flush=True)
         if self._pm_mode:
             from .pm import pm_turn

@@ -23,7 +23,8 @@ def apply_workdir(cfg: Config, workdir: str | None) -> Config:
 
 
 def read_interactive_line(prompt: str, on_slash, _read_char=None,
-                          erase_on_enter: bool = False) -> str | None:
+                          erase_on_enter: bool = False,
+                          _has_pending=None) -> str | None:
     """Interactive line editor (Windows TTY).
 
     Typing '/' as the FIRST character opens the command menu immediately (no
@@ -31,6 +32,16 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
     complete the command, and Enter sends it (the leading '/' is re-added).
     Falls back to plain `input()` on non-Windows / non-TTY stdin.
     Returns the line, or None on EOF.
+
+    PASTE HANDLING: a multi-line paste (e.g. a task doc copied out of TASK.md)
+    must NOT be split into one submission per line. When the user hits Enter the
+    Windows console may also deliver a trailing '\r'/'\n' from the clipboard,
+    so we distinguish a "paste burst" from a real submit:
+      - '\n' is NEVER a submit — it is always collected as part of the input.
+      - '\r' submits ONLY when no more input is pending (_has_pending() is
+        False, i.e. the buffer is empty). Otherwise the '\r' is a paste line
+        break and is collected as a newline (swallowing a following '\n' so a
+        '\r\n' paste becomes a single '\n').
     """
     if os.name != "nt" or not sys.stdin.isatty():
         try:
@@ -41,15 +52,41 @@ def read_interactive_line(prompt: str, on_slash, _read_char=None,
     import msvcrt as _msvcrt
 
     reader = _read_char or _msvcrt.getwch
+    has_pending = _has_pending if _has_pending is not None else _msvcrt.kbhit
     chars: list[str] = []
     slash_seen = False
+    skip_lf = False  # the '\n' half of a '\r\n' paste already handled by '\r'
     sys.stdout.write(prompt)
     sys.stdout.flush()
     while True:
         ch = reader()
-        if ch in ("\r", "\n"):
+        if ch == "\n":
+            # A lone '\n' is a paste line break, never a submit: collect it.
+            # But if it follows a handled '\r' ('\r\n'), swallow it once.
+            if skip_lf:
+                skip_lf = False
+            else:
+                chars.append("\n")
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            continue
+        if ch == "\r":
+            if skip_lf:
+                # trailing '\n' of a '\r\n' pair already swallowed; this '\r'
+                # is the paste's CR and, if more text follows, keep collecting.
+                skip_lf = False
+            if has_pending():
+                # More input is still queued (paste burst) -> this '\r' is a
+                # line break, not a submit. Collect a '\n'; if the very next
+                # char is '\n' (the '\r\n' pair) swallow it next loop.
+                chars.append("\n")
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                skip_lf = True
+                continue
+            # Buffer empty -> a real Enter. Submit the collected input line.
             line = ("/" if slash_seen else "") + "".join(chars)
-            if erase_on_enter and not line.startswith("/"):
+            if erase_on_enter and not line.startswith("/") and "\n" not in line:
                 # The caller re-renders this as a chat bubble in the SAME spot;
                 # erase the echoed prompt line so the input is shown only ONCE
                 # (replaces the inline echo instead of duplicating it below).

@@ -219,6 +219,21 @@ def test_r13_echo_input_renders_chat_box(capsys, tmp_path):
     assert "修复这个 bug" in captured  # input echoed inside the box
 
 
+def test_r13b_multiline_paste_no_duplicate_bubble(capsys, tmp_path):
+    """Regression: a multi-line pasted task must NOT be echoed a second time in
+    a chat box — the pasted lines are already visible, so no bubble is drawn."""
+    class Fake:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="ok", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=Fake(),
+                       stream=False, echo_input=True)
+    lines = sess.handle("line one\nline two")
+    assert lines == ["ok"]
+    captured = capsys.readouterr().out
+    assert "┌" not in captured  # NO chat box for a multi-line paste
+
+
 def test_r13b_echo_input_off_by_default(capsys, tmp_path):
     class Fake:
         def complete(self, _sys, _messages, _tools=None):
