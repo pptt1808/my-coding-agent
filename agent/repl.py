@@ -35,7 +35,7 @@ HELP = """slash commands (type a prefix and press Enter to expand, e.g. /comp):
   /cost            show input/output/total token usage
   /model <name>    switch model tier (e.g. deepseek-v4-pro)
   /save [name]     persist the session (auto id if name omitted)
-  /resume <name>   load a saved session
+  /resume [id|n]   list saved sessions, then pick a number to load one
   /ls              list saved sessions
   /task add <t>    add a todo item
   /task list       show the todo list
@@ -112,6 +112,8 @@ class ReplSession:
         self._config = config
         self._llm = llm
         self._judge = judge
+        self._trace = trace           # reused when /resume rebuilds the agent
+        self._tools = tools           # reused when /resume rebuilds the agent
         self._agent = CodingAgent(config, llm=llm, model=model, trace=trace, tools=tools)
         self._messages: list[dict[str, Any]] = []
         self._todos: list[str] = []
@@ -301,13 +303,7 @@ class ReplSession:
             save_session(session, self._config.workdir)
             return [f"session saved: {sid}"]
         if cmd == "/resume":
-            if not arg.strip():
-                return ["usage: /resume <name>"]
-            try:
-                saved = load_session(self._config.workdir, arg.strip())
-            except FileNotFoundError as exc:
-                return [str(exc)]
-            return self._apply_session(saved)
+            return self._resume(arg)
         if cmd == "/ls":
             sessions = list_sessions(self._config.workdir)
             if not sessions:
@@ -438,12 +434,46 @@ class ReplSession:
             "usage: /permissions [block <pattern>|reset]",
         ]
 
+    def _resume(self, arg: str) -> list[str]:
+        """Resume a saved session.
+
+        `/resume`          -> list sessions with a number so the user can pick one.
+        `/resume <n>`      -> resume the n-th listed session.
+        `/resume <name>`   -> resume a session by its exact id (legacy).
+        """
+        sessions = list_sessions(self._config.workdir)
+        if not sessions:
+            return ["no saved sessions (use /save to persist the current one)"]
+        # numbered selection: ask which one, listing newest-first like /ls
+        if not arg.strip():
+            lines = ["saved sessions — type /resume <number> to load one:"]
+            lines += [
+                f"  {i}. {s.id}  updated={s.updated_at:.0f}  messages={len(s.messages)}  model={s.model}"
+                for i, s in enumerate(sessions, start=1)
+            ]
+            lines.append("or /resume <id> to load by exact id.")
+            return lines
+        sel = arg.strip()
+        # a bare integer -> index into the numbered list (1-based)
+        if sel.isdigit():
+            idx = int(sel)
+            if not (1 <= idx <= len(sessions)):
+                return [f"invalid number: {sel} (1..{len(sessions)})"]
+            return self._apply_session(sessions[idx - 1])
+        # otherwise treat it as an exact session id
+        try:
+            saved = load_session(self._config.workdir, sel)
+        except FileNotFoundError as exc:
+            return [str(exc)]
+        return self._apply_session(saved)
+
     def _apply_session(self, saved: Session) -> list[str]:
         """Restore a saved session: messages, model, stats; rebuild agent if workdir changed."""
         saved_wd = Path(saved.workdir)
         if saved_wd != self._config.workdir:
             self._config = replace(self._config, workdir=saved_wd)
-        self._agent = CodingAgent(self._config, llm=self._llm, model=saved.model)
+        self._agent = CodingAgent(self._config, llm=self._llm, model=saved.model,
+                                  trace=self._trace, tools=self._tools)
         self._agent.steps = saved.steps
         self._agent.total_tokens = saved.total_tokens
         self._agent.input_tokens = saved.input_tokens

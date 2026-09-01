@@ -101,6 +101,39 @@ def test_r9_save_and_resume_restores_history(tmp_path):
     assert fake.calls[-1][-1]["content"] == "second task"
 
 
+def test_r9b_resume_no_arg_lists_sessions_numbered(tmp_path):
+    fake = FakeLLM()
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    sess.handle("first task")
+    sess.handle("/save alpha")
+    sess.handle("/clear")  # drop in-memory history so only the saved one matters
+    sess2 = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    lines = sess2.handle("/resume")
+    text = "\n".join(lines)
+    assert "alpha" in text          # lists the saved session
+    assert "1." in text             # numbered so the user can pick
+    # picking by number resumes it
+    sess2.handle("/resume 1")
+    sess2.handle("second task")
+    assert fake.calls[-1][0]["content"] == "first task"  # resumed history carried over
+
+
+def test_r9c_resume_out_of_range_number(tmp_path):
+    fake = FakeLLM()
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    sess.handle("/save only")
+    sess2 = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    text = "\n".join(sess2.handle("/resume 9"))
+    assert "invalid number" in text
+
+
+def test_r9d_resume_no_sessions(tmp_path):
+    fake = FakeLLM()
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake)
+    text = "\n".join(sess.handle("/resume"))
+    assert "no saved sessions" in text
+
+
 def test_r10_cost_shows_token_split(session):
     sess, _ = session
     sess.handle("work")

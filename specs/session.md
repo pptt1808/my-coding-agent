@@ -6,7 +6,7 @@
 
 行为：
 - `/save [name]` 保存当前会话，id 为 name 或自动生成；
-- `/resume <name>` 从当前 workdir 的会话目录加载并恢复消息/模型/统计；workdir 不同时重建 agent；
+- `/resume` 无参时列出已保存会话并编号（供用户选择）；`/resume <n>` 按编号恢复；`/resume <name>` 按 id 恢复；恢复消息/模型/统计，workdir 不同时重建 agent（并保留 trace/tools 配置）；
 - `/ls` 列出已保存会话（id、更新时间、消息数）；
 - 保存内容包括 messages、model、workdir、steps、total/input/output tokens。
 
