@@ -343,3 +343,33 @@ def test_pm_mode_toggles_within_same_session(tmp_path):
     out2 = sess.handle("/pm")
     assert any("normal" in line for line in out2)  # back to normal mode
     assert sess._pm_mode is False
+
+
+def test_pm_step_forwards_trailing_text(tmp_path):
+    """'/vision <text>' must pass <text> through as the user's message, not drop it."""
+    class CapturingLLM:
+        def __init__(self):
+            self.last_messages = None
+        def complete(self, _sys, messages, _tools=None):
+            self.last_messages = list(messages)
+            return LLMResult(text="# DEMO_SPEC.md\n## Vision\nx", usage={"total_tokens": 1})
+
+    fake = CapturingLLM()
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=fake, stream=False)
+    sess.handle("/pm")
+    sess.handle("/vision 我的产品是给大学生做求职准备的")
+    # the trailing text must reach the model as the last user message
+    assert fake.last_messages is not None
+    assert fake.last_messages[-1]["content"] == "我的产品是给大学生做求职准备的"
+
+
+def test_pm_step_outside_pm_mode_is_rejected(tmp_path):
+    """The six PM step commands are meaningless before /pm, so they should hint."""
+    class FakePMLLM:
+        def complete(self, _sys, _messages, _tools=None):
+            return LLMResult(text="# DEMO_SPEC.md\n## Vision\nx", usage={"total_tokens": 1})
+
+    sess = ReplSession(Config(api_key="x", workdir=tmp_path), llm=FakePMLLM(), stream=False)
+    out = sess.handle("/vision")
+    assert any("not in PM mode" in line for line in out)
+    assert sess._pm_mode is False

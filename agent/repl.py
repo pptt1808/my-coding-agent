@@ -57,7 +57,12 @@ Anything else is sent to the agent as a new turn."""
 
 COMMANDS = ["help", "exit", "clear", "compact", "status", "cost", "model",
             "save", "resume", "ls", "task", "review", "undo", "redo",
-            "explore", "plan", "permissions", "codemap", "skills", "pm"]
+            "explore", "plan", "permissions", "codemap", "skills", "pm",
+            "vision", "story", "mvp", "validate", "polish", "pitch"]
+
+# PM-mode step commands (only valid after /pm). Each accepts trailing text as
+# the user's message, e.g. "/vision 我的产品是给大学生做的".
+_PM_STEP_COMMANDS = frozenset(("vision", "story", "mvp", "validate", "polish", "pitch"))
 
 DEFAULT_REVIEW_RUBRIC = {
     "correctness": "Does the change satisfy the requested behavior?",
@@ -257,10 +262,14 @@ class ReplSession:
                 return [apply_pm_mode(self._agent)]
             self._pm_mode = False
             return [exit_pm_mode(self._agent)]
-        if self._pm_mode and cmd[1:] in ("vision", "story", "mvp", "validate", "polish", "pitch"):
+        # PM steps (only meaningful inside PM mode); the text after the command
+        # (e.g. "/vision 我的产品给大学生") is passed through as the user's message.
+        if cmd[1:] in _PM_STEP_COMMANDS:
+            if not self._pm_mode:
+                return [f"[pm:{cmd[1:]}] not in PM mode — run /pm first."]
             from .pm import pm_step
             self._pm_messages, out = pm_step(self._agent, self._pm_messages,
-                                             self._config.workdir, cmd[1:], "")
+                                             self._config.workdir, cmd[1:], arg.strip())
             return out
         if cmd == "/exit":
             self.running = False
