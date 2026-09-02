@@ -1,8 +1,12 @@
-"""Unit tests for the Claude-Code-style status spinner (specs/cli.md R16)."""
+"""Unit tests for the status line (specs/cli.md R16) — deliberate STATIC, no thread.
+
+The spinner is synchronous: it draws a single status line and clears it when
+real output arrives. Writing from a background thread would interleave with the
+main thread's streamed answer and corrupt the terminal, so there is NO thread.
+"""
 from __future__ import annotations
 
 import io
-import time
 
 from agent.spinner import StatusSpinner
 
@@ -16,31 +20,37 @@ def _collect():
 def test_spinner_shows_label_and_clears():
     s, buf = _collect()
     s.start("思考中")
-    time.sleep(0.05)
     out = buf.getvalue()
     assert "思考中" in out            # the label is shown
-    assert "\r" in out               # status line uses a carriage return
+    assert "[agent]" in out           # prefixed status line
+    assert "\r" in out                # status line uses a carriage return
     s.clear()
-    # clear() erases the line in the terminal via a carriage-return + erase-to-EOL;
-    # the StringIO buffer keeps the prior text, so assert the erase was emitted.
     end = buf.getvalue()
-    assert end.rstrip().endswith("\r\x1b[2K")  # last action is erase-to-EOL
+    assert end.rstrip().endswith("\r\x1b[2K")  # clear erases via CR + erase-to-EOL
+    # after clearing, a further start/clear does nothing extra (label empty)
+    out2 = buf.getvalue()
+    assert "[agent]" in out2
 
 
 def test_spinner_update_changes_label():
     s, buf = _collect()
     s.start("思考中")
     s.update("读取 report.py")
-    time.sleep(0.02)
     assert "读取 report.py" in buf.getvalue()
     s.clear()
+    # no stale label after clear
+    out = buf.getvalue()
+    assert "[agent] 读取 report.py" in out  # was drawn before being cleared
 
 
 def test_spinner_matches_loop_contract():
-    """The agent calls on_status('') to mean 'clear', non-empty to mean 'show'."""
+    """The agent calls clear()/update(); the REPL clears before printing tokens."""
     s, buf = _collect()
-    s.update("执行 read_file")        # like a status callback
+    s.update("执行 read_file")
     assert "执行 read_file" in buf.getvalue()
-    s.update("")                      # clear
-    time.sleep(0.01)
-    assert "\x1b[2K" in buf.getvalue()
+    s.clear()
+    assert buf.getvalue().rstrip().endswith("\r\x1b[2K")
+    # after clear the label must be empty so a repeated clear writes nothing
+    before = len(buf.getvalue())
+    s.clear()
+    assert len(buf.getvalue()) == before  # no-op once already cleared

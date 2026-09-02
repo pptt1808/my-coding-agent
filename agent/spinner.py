@@ -1,91 +1,55 @@
-"""A Claude-Code-style status line (spinner) for the REPL.
+"""A Claude-Code-style status line for the REPL — no background thread.
 
-The agent loop calls `on_status(label)` frequently (thinking, running a tool,
-done) but emits no text while it works. This renders a single status line on the
-terminal (using `\r` + erase-to-EOL) and clears it the moment real text arrives,
-so the user always sees *something* happening and never a dead-looking screen.
+The agent loop calls `on_status(label)` (thinking, running a tool) but emits no
+text while it works, so the terminal would otherwise look frozen. This renders a
+single status line (using `\r` + erase-to-EOL) and clears it the moment real
+output arrives.
 
-Two modes:
-  - animated (default): a background thread advances a spinner glyph so the line
-    visibly "ticks" while the agent is blocked waiting on the LLM/tool.
-  - `on_delta` (streaming): the REPL must call `sink.clear()` before printing each
-    incoming token, so the spinner is replaced by the real answer text.
+IMPORTANT design choice: this is deliberately STATIC — no background thread
+advances a spin glyph. A background thread writing to stdout concurrently with
+the main thread (which prints the streamed answer) interleaves bytes and leaves
+garbage on screen. Instead the REPL:
 
-Thread-safety: the tick thread only writes the status line; the main thread
-writes real output. Both go through a small lock so lines don't interleave.
+  - calls `start(label)` / `update(label)` right before a long operation, and
+  - calls `clear()` as soon as it prints any real token / the final answer.
+
+Everything is synchronous and single-threaded, so nothing can be torn.
 """
 from __future__ import annotations
 
 import sys
-import threading
-import time
 from typing import Any
 
-_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧")
 _ERASE = "\x1b[2K"  # erase to end of line
 
 
 class StatusSpinner:
-    """Renders a single status line that starts with an animated spinner glyph."""
+    """Renders a single status line on the terminal (sync, no thread)."""
 
-    def __init__(self, stream: Any = None, frames: tuple[str, ...] = _FRAMES,
-                 interval: float = 0.08) -> None:
+    def __init__(self, stream: Any = None) -> None:
         self._stream = stream or sys.stdout
-        self._frames = frames
-        self._interval = interval
         self._label = ""
-        self._idx = 0
-        self._active = False
-        self._lock = threading.Lock()
-        self._thread: threading.Thread | None = None
-
-    # -- lifecycle ---------------------------------------------------------
 
     def start(self, label: str = "思考中") -> None:
-        """Begin showing an animated status line."""
-        with self._lock:
-            if self._active:
-                return
-            self._label = label
-            self._active = True
-        self._thread = threading.Thread(target=self._tick, daemon=True)
-        self._thread.start()
+        """Show a status line (idempotent; just redraws)."""
+        self._label = label
+        self._draw()
 
     def update(self, label: str) -> None:
-        """Change the status text (called from on_status)."""
-        with self._lock:
-            self._label = label
-            self._redraw_locked()
+        """Change the status text (idempotent)."""
+        self._label = label
+        self._draw()
 
     def clear(self) -> None:
         """Erase the status line (call before printing real output)."""
-        self._stop()
-        with self._lock:
+        if self._label:
             self._stream.write("\r" + _ERASE)
             self._stream.flush()
+            self._label = ""
 
-    # -- internals ---------------------------------------------------------
-
-    def _redraw_locked(self) -> None:
-        frame = self._frames[self._idx % len(self._frames)]
-        # move to column 0, erase to EOL, then draw '<spinner> <label>'
-        self._stream.write("\r" + _ERASE + f"{frame} {self._label}")
+    def _draw(self) -> None:
+        if not self._label:
+            return
+        # move to column 0, erase to EOL, then draw the status line.
+        self._stream.write(f"\r{_ERASE}[agent] {self._label}")
         self._stream.flush()
-
-    def _tick(self) -> None:
-        while True:
-            with self._lock:
-                if not self._active:
-                    return
-                self._idx += 1
-                self._redraw_locked()
-            time.sleep(self._interval)
-
-    def _stop(self) -> None:
-        with self._lock:
-            was = self._active
-            self._active = False
-        if was and self._thread is not None:
-            # a background thread cannot be joined from the same lock, but we
-            # only need it to exit; daemon=True lets it clean up on process end.
-            self._thread = None

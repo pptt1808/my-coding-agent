@@ -179,10 +179,9 @@ class ReplSession:
 
         def _on_status(label: str) -> None:
             if label:
-                spinner.start(label)   # starts the tick thread if not already running
-                spinner.update(label)  # refresh the label immediately
+                spinner.update(label)   # show/refresh the status line
             else:
-                spinner.clear()
+                spinner.clear()         # erase it before real output
 
         self._agent._on_status = _on_status
 
